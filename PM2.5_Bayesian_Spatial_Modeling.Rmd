@@ -1,0 +1,1727 @@
+---
+title: ''
+output:
+  html_document:
+    df_print: paged
+    code_folding: show
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: false 
+  word_document:
+    toc: yes
+  pdf_document: default
+date: "2023-05-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, error = FALSE, message = FALSE)
+```
+
+# Import and Clean
+
+```{r, warning=FALSE, message=FALSE}
+library(haven)
+setwd("C:/Users/Yuzhou Pan/Emory University/Chang, Howard - CDC Wildfire Data Fusion/CDC Data")
+PM_AQS_2018 <- read_sas("PM_AQS_2018.sas7bdat")
+grid <- read_sas("grid_model_pm_o3_2018.sas7bdat")
+```
+
+
+```{r}
+library(knitr)
+library(tidyverse)
+summary(grid$Grid_lon-360)
+summary(PM_AQS_2018$LON_AQS)
+
+summary(grid$Grid_lat)
+summary(PM_AQS_2018$LAT_AQS)
+```
+```{r}
+library(dplyr)
+grid$Grid_lon_new <- grid$Grid_lon-360
+
+PM_AQS_2018 %>%
+  dplyr::select(LAT_AQS, LON_AQS, Date) -> key
+
+
+grid %>% distinct(Grid_lat, Grid_lon_new) -> distinct_grid_lat_lon
+
+PM_AQS_2018 %>%
+  distinct(LAT_AQS, LON_AQS) %>%
+  cross_join(distinct_grid_lat_lon) %>%
+  mutate(euclid_dist = sqrt((Grid_lat-LAT_AQS)^2+(Grid_lon_new-LON_AQS)^2)) %>%
+  group_by(LAT_AQS, LON_AQS) %>%
+  slice_min(euclid_dist) -> PM_grid_pairs
+```
+
+
+```{r}
+PM_AQS_2018 %>%
+  left_join(PM_grid_pairs) %>%
+  left_join(grid, by = c("Date" = "date", 
+                         "Grid_lat" = "Grid_lat", 
+                         "Grid_lon_new" = "Grid_lon_new")) %>%
+  dplyr::select(Date, PM_AQS, PM25_TOT_NCAR, LAT_AQS, LON_AQS, Grid_lat, Grid_lon, 
+         AQS_Site_id) -> PM_grid
+```
+
+```{r}
+head(PM_grid) %>% kable()
+```
+
+```{r}
+summary(PM_grid$PM_AQS)
+summary(PM_grid$PM25_TOT_NCAR)
+hist(PM_grid$PM_AQS)
+hist(PM_grid$PM25_TOT_NCAR)
+#PM_grid %>%
+#  filter(!is.na(PM_AQS) & !is.na(PM25_TOT_NCAR)) %>%
+#  arrange(desc(PM_AQS)) 
+```
+```{r}
+hist(log(PM_grid$PM_AQS))
+hist(log(PM_grid$PM25_TOT_NCAR))
+```
+
+
+```{r}
+#write.csv(PM_grid, "PM_grid.csv", row.names = F)
+```
+
+
+
+$$y_s = \beta_0+\beta_1X_s+\epsilon_s+\theta_s$$
+
+$$\epsilon_s \sim N(0, \sigma^2)$$
+
+$$\theta_s \sim GP(0, \Sigma_{\psi})$$
+
+```{r}
+library(INLA)
+library(sf)
+library(tmap)
+data(World)
+```
+
+```{r remove neg or NA PM values}
+df <- PM_grid
+df %>%
+  drop_na(PM_AQS, PM25_TOT_NCAR) %>%
+  filter(PM_AQS >= 0) %>%
+  rowwise() %>%
+  mutate(Grid_lon = Grid_lon - 360) -> df
+#df
+```
+
+```{r}
+#df[df$Date == "2018-06-01",] -> df
+
+#st_as_sf(df, coords = c("LON_AQS", "LAT_AQS"), crs = "WGS84") -> df_sf
+#tmap_mode("plot")
+#tm_shape(df_sf) + tm_dots("PM_AQS")
+#plot(df_sf)
+```
+
+```{r}
+USA.sf <- World[World$iso_a3 == "USA", ]$geometry
+ggplot() +
+  geom_sf(data = USA.sf, fill = NA) +
+  geom_point(aes(x = LON_AQS, y = LAT_AQS), 
+             size = 1, data = df %>% distinct(AQS_Site_id, .keep_all = T)) +
+  theme_minimal()
+```
+
+```{r find polygon of Contiguous United States}
+#plot(st_cast(USA.sf, "POLYGON")[6])
+USA.contiguous.sf <- st_cast(USA.sf, "POLYGON")[6]
+```
+
+
+```{r}
+#df_pts <- st_multipoint(cbind(df$LON_AQS, df$LAT_AQS))
+
+df.0601 <- df[df$Date == "2018-06-01",] %>% ungroup()
+
+ggplot() +
+  geom_sf(data = USA.contiguous.sf, fill = NA) +
+  geom_point(aes(x = LON_AQS, y = LAT_AQS, color = PM_AQS), 
+             data = df.0601) +
+  scale_color_gradient(low = "blue", high = "orange") +
+  theme_minimal()
+```
+
+# Kriging
+
+```{r}
+library(gstat)
+library(sp)
+
+df.0601.krig <- df.0601
+coordinates(df.0601.krig) <- ~ LON_AQS + LAT_AQS
+proj4string(df.0601.krig) <- CRS("+proj=longlat +datum=WGS84")
+
+# make grid
+grid %>% distinct(Grid_lon, Grid_lat) -> df.0601.krig.grid
+st_as_sf(df.0601.krig.grid, 
+         coords = c("Grid_lon", "Grid_lat"), crs = "WGS84") -> df.0601.grid.sf
+st_make_grid(df.0601.grid.sf, what = "centers", square = T, cellsize = 0.5) %>% 
+  as("Spatial")-> df.0601.krig.grid
+gridded(df.0601.krig.grid) <- T
+
+#plot(df.0601.krig.grid)
+vgm <- variogram(PM_AQS ~ 1, df.0601.krig)
+vgm.fit <- fit.variogram(vgm, vgm("Gau"))
+krg <- krige(PM_AQS ~ 1, df.0601.krig, df.0601.krig.grid, model = vgm.fit)
+
+df.0601.krig.grid$PM.krg <- krg$var1.pred
+df.0601.krig.grid$PM.krg.sd <- sqrt(krg$var1.var)
+```
+
+```{r}
+#grid %>% distinct(Grid_lon, Grid_lat) -> df.0601.krig.grid
+#st_as_sf(df.0601.krig.grid, 
+#         coords = c("Grid_lon", "Grid_lat"), crs = "WGS84") -> df.0601.grid.sf
+#st_make_grid(df.0601.grid.sf, what = "centers", square = T, cellsize = 0.5) %>% 
+#  as("Spatial")-> df.0601.krig.grid
+#plot(df.0601.krig.grid)
+```
+
+
+```{r}
+#df.0601.krig.grid
+ggplot(as.data.frame(df.0601.krig.grid), aes(x = coords.x1, y = coords.x2, 
+                                             fill = PM.krg)) +
+  geom_tile() +
+  scale_fill_distiller(palette = 'Spectral',
+                       na.value = 'transparent',
+                       limits = c(4, 7.2)) +
+  theme_minimal()
+```
+
+- unsuccessfull, to be removed
+
+# SPDE
+
+## Prediction on Grid
+
+Model 1: $y_s = \beta_0+\epsilon_s+\theta_s$  
+Model 2: $y_s = \beta_0+\beta_1X_s+\epsilon_s+\theta_s$
+
+```{r, message=F, error=F, warning=F}
+setwd("C:/Users/Yuzhou Pan/Emory University/Chang, Howard - CDC Wildfire Data Fusion/CDC Data")
+dat <- read_sas("Relationship_File_AQS_Model_PM.sas7bdat") 
+
+## Create spatial point object ##
+geo.x = mapply ( function (x,y){c(x,y)}, x=dat$LON_AQS, y=dat$LAT_AQS , SIMPLIFY=FALSE)
+geo.x = lapply (geo.x, st_point)
+geo.x = st_sfc(geo.x, crs = 4326) #crs=4326 for lat/lon
+
+##(x,y) projection to Lambert Conformal Conic North America (crs = 9802)
+#sf::st_crs("ESRI:102004")
+geo.x = st_transform(geo.x, crs = "ESRI:102004")
+
+#Euclidian XY in meters
+XY = as.data.frame(st_coordinates(geo.x))
+dat$X_AQS = XY$X
+dat$Y_AQS = XY$Y
+
+# Transfer it to km
+dat$X_AQS_km <- XY$X / 1000
+dat$Y_AQS_km <- XY$Y / 1000
+
+
+geo.x = mapply ( function (x,y){c(x,y)}, x=dat$Grid_LON, y=dat$Grid_LAT, SIMPLIFY=FALSE)
+geo.x = lapply (geo.x, st_point)
+geo.x = st_sfc(geo.x, crs = 4326) #crs=4326 for lat/lon
+
+##(x,y) projection to Lambert Conformal Conic North America (crs = 9802)
+#sf::st_crs("ESRI:102004")
+geo.x = st_transform(geo.x, crs = "ESRI:102004")
+
+#Euclidian XY in meters
+XY = as.data.frame(st_coordinates(geo.x))
+dat$X_AQS = XY$X
+dat$Y_AQS = XY$Y
+
+# Transfer it to km
+dat$X_Grid_km <- XY$X / 1000
+dat$Y_Grid_km <- XY$Y / 1000
+```
+
+
+```{r}
+relationship <- dat
+#relationship
+plot(relationship$X_AQS_km, relationship$Y_AQS_km, main = "Monitors")
+plot(relationship$X_Grid_km, relationship$Y_Grid_km, main = "Grid Centroids")
+```
+
+```{r}
+df.0601 %>%
+  left_join(relationship %>%
+              dplyr::select(AQS_Site_id, X_AQS_km, Y_AQS_km, X_Grid_km, Y_Grid_km), 
+            by = "AQS_Site_id") %>%
+  drop_na() -> df.0601.new
+```
+
+
+```{r}
+points <- data.matrix(cbind(df.0601.new$X_AQS_km, df.0601.new$Y_AQS_km))
+grid.pts <- data.matrix(cbind(df.0601.new$X_Grid_km, df.0601.new$Y_Grid_km))
+df.0601.mesh <- inla.mesh.2d(loc = points, 
+                             cutoff = 12,
+                             max.edge = c(300, 600))
+plot(df.0601.mesh)
+#points(points, col = "red")
+```
+
+```{r}
+A <- inla.spde.make.A(mesh = df.0601.mesh, loc = points)
+Ap <- inla.spde.make.A(mesh = df.0601.mesh, loc = grid.pts)
+
+spde <- inla.spde2.matern(df.0601.mesh, alpha = 2, constr = T)
+mesh.index <- inla.spde.make.index(name = "s", n.spde = spde$n.spde)
+
+# stack for estimation
+stk.e <- inla.stack(
+  tag = "est",
+  data = list(PM_AQS = df.0601.new$PM_AQS),
+  A = list(1, A),
+  effects = list(data.frame(b0 = rep(1, nrow(points)),
+                            PM25_TOT_NCAR = df.0601.new$PM25_TOT_NCAR), 
+                 s = mesh.index)
+)
+
+# stack for prediction
+stk.p <- inla.stack(
+  tag = "pred",
+  data = list(PM_AQS = NA),
+  A = list(1, Ap),
+  effects = list(data.frame(b0 = rep(1, nrow(grid.pts)),
+                            PM25_TOT_NCAR = df.0601.new$PM25_TOT_NCAR), 
+                 s = mesh.index)
+)
+
+stk.full <- inla.stack(stk.e, stk.p)
+```
+
+
+```{r}
+formula.1 <- PM_AQS ~ 0 + b0 + f(s, model = spde)
+formula.2 <- PM_AQS ~ 0 + b0 + PM25_TOT_NCAR + f(s, model = spde)
+
+df.0601.inla.1 <- inla(formula.1, data = inla.stack.data(stk.full),
+                       control.predictor = list(compute = TRUE,
+                                                A = inla.stack.A(stk.full)),
+                       control.compute=list(cpo=TRUE))
+df.0601.inla.2 <- inla(formula.2, data = inla.stack.data(stk.full),
+                       control.predictor = list(compute = TRUE,
+                                                A = inla.stack.A(stk.full)),
+                       control.compute=list(cpo=TRUE))
+```
+
+```{r}
+#str(spde)
+spde$f
+```
+
+
+### Conditional Predictive Ordinate
+
+Model 2 has the smaller absolute value.
+
+```{r}
+data.frame(y = c(sum(log(df.0601.inla.1$cpo$cpo), na.rm = T),
+                 sum(log(df.0601.inla.2$cpo$cpo), na.rm = T))) -> df.cpo
+colnames(df.cpo) <- "Sum of Logarithm of CPO"
+rownames(df.cpo) <- c("Model 1", "Model 2")
+df.cpo %>% kable()
+```
+
+```{r}
+#hist(df.0601.inla.1$cpo$pit)
+#hist(df.0601.inla.2$cpo$pit)
+```
+
+### Other Summaries
+
+```{r}
+df.0601.inla.1$summary.hyperpar %>% knitr::kable()
+df.0601.inla.2$summary.hyperpar %>% knitr::kable()
+```
+
+```{r}
+df.0601.inla.1$summary.fixed %>% kable()
+df.0601.inla.2$summary.fixed %>% kable()
+```
+
+
+## 10-Fold Cross-validation
+
+```{r}
+library(caret)
+set.seed(123456)
+n.total <- nrow(points)
+index <- createFolds(sample(c(1: n.total)), 10)
+```
+
+```{r}
+rmse.1 <- NULL; rmse.2 <- NULL; rmse.3 <- NULL
+R2.1 <- NULL; R2.2 <- NULL; R2.3 <- NULL
+prop.1 <- NULL; prop.2 <- NULL; prop.3 <- NULL
+
+mean.pred.1.list <- rep(NA, n.total)
+mean.pred.2.list <- rep(NA, n.total)
+mean.pred.3.list <- rep(NA, n.total)
+ll.pred.1.list <- rep(NA, n.total)
+ll.pred.2.list <- rep(NA, n.total)
+ll.pred.3.list <- rep(NA, n.total)
+ul.pred.1.list <- rep(NA, n.total)
+ul.pred.2.list <- rep(NA, n.total)
+ul.pred.3.list <- rep(NA, n.total)
+sd.pred.1.list <- rep(NA, n.total)
+sd.pred.2.list <- rep(NA, n.total)
+sd.pred.3.list <- rep(NA, n.total)
+
+cv.list <- rep(NA, n.total)
+```
+
+```{r}
+for (i in c(1:10)){
+  index.test <- index[i]
+  names(index.test) <- NULL
+  index.test <- unlist(index.test)
+  index.train <- setdiff(c(1: n.total), index.test)
+  
+  n.test <- length(index.test)
+  n.train <- length(index.train)
+  
+  # monitors
+  points.train <- points[index.train, ]
+  points.test <- points[index.test, ]
+
+  # grid centroids
+  grid.pts.train <- grid.pts[index.train, ]
+  grid.pts.test <- grid.pts[index.test, ]
+
+  # y
+  PM_AQS.train <- df.0601.new[index.train, ]$PM_AQS
+  PM_AQS.test <- df.0601.new[index.test, ]$PM_AQS
+
+  # x
+  PM25_TOT_NCAR.train <- df.0601.new[index.train, ]$PM25_TOT_NCAR
+  PM25_TOT_NCAR.test <- df.0601.new[index.test, ]$PM25_TOT_NCAR
+  
+  mesh.train <- inla.mesh.2d(loc = points.train,
+                           cutoff = 12,
+                           max.edge = c(300, 600))
+  
+  mesh.train2 <- inla.mesh.2d(loc = rbind(points.train, grid.pts.train),
+                              cutoff = 12,
+                              max.edge = c(300, 600))
+  
+  #plot(mesh.train)
+  
+  A <- inla.spde.make.A(mesh = mesh.train, loc = points.train)
+  Ap <- inla.spde.make.A(mesh = mesh.train, loc = points.test)
+
+  spde <- inla.spde2.matern(mesh.train, alpha = 2, constr = T)
+  mesh.index <- inla.spde.make.index(name = "s", n.spde = spde$n.spde)
+
+  # stack for estimation
+  stk.e <- inla.stack(
+    tag = "est",
+    data = list(PM_AQS = PM_AQS.train),
+    A = list(1, A),
+    effects = list(data.frame(b0 = 1,
+                              PM25_TOT_NCAR = PM25_TOT_NCAR.train), 
+                  s = mesh.index)
+  )
+
+  # stack for prediction
+  stk.p <- inla.stack(
+    tag = "pred",
+    data = list(PM_AQS = NA),
+    A = list(1, Ap),
+    effects = list(data.frame(b0 = 1,
+                              PM25_TOT_NCAR = PM25_TOT_NCAR.test), 
+                   s = mesh.index)
+  )
+  
+  # stack for model 3
+  A.model3.train <- inla.spde.make.A(mesh = mesh.train, loc = points.train, 
+                               weights = PM25_TOT_NCAR.train)
+  A.model3.test <- inla.spde.make.A(mesh = mesh.train, loc = points.test, 
+                               weights = PM25_TOT_NCAR.test)
+  #stk.0 <- inla.stack(
+  #  tag = "zero",
+  #  data = list(PM_AQS = rep(0, n.train)),
+  #  A = list(1, A),
+  #  effects = list(data.frame(b0 = 0,
+  #                            PM25_TOT_NCAR = (-1) * PM25_TOT_NCAR.train),
+  #                 s2 = inla.spde.make.index(name = "s2", n.spde = spde$n.spde))
+  #)
+  stk.e.model3 <- inla.stack(
+    tag = "est",
+    data = list(PM_AQS = PM_AQS.train),
+    A = list(1, A, A.model3.train),
+    effects = list(data.frame(b0 = 1,
+                              PM25_TOT_NCAR = PM25_TOT_NCAR.train), 
+                  s = mesh.index,
+                  s2 = inla.spde.make.index(name = "s2", n.spde = spde$n.spde))
+  )
+  
+  stk.p.model3 <- inla.stack(
+    tag = "pred",
+    data = list(PM_AQS = NA),
+    A = list(1, Ap, A.model3.test),
+    effects = list(data.frame(b0 = 1,
+                              PM25_TOT_NCAR = PM25_TOT_NCAR.test), 
+                   s = mesh.index,
+                   s2 = inla.spde.make.index(name = "s2", n.spde = spde$n.spde))
+  )
+
+  stk.full <- inla.stack(stk.e, stk.p)
+  stk.full2 <- inla.stack(stk.e.model3, stk.p.model3)
+  
+  # formula
+  formula.1 <- PM_AQS ~ 0 + b0 + f(s, model = spde, constr = F)
+  formula.2 <- PM_AQS ~ 0 + b0 + PM25_TOT_NCAR + f(s, model = spde, constr = F)
+  formula.3 <- PM_AQS ~ 0 + b0 + PM25_TOT_NCAR + f(s, model = spde, constr = F) + 
+    f(s2, model = spde, constr = F)
+  
+  # model
+  model.1 <- inla(formula.1, data = inla.stack.data(stk.full),
+                  control.predictor = list(compute = TRUE,
+                                           A = inla.stack.A(stk.full)))
+  model.2 <- inla(formula.2, data = inla.stack.data(stk.full),
+                  control.predictor = list(compute = TRUE,
+                                           A = inla.stack.A(stk.full)))
+  model.3 <- inla(formula.3, data = inla.stack.data(stk.full2),
+                  control.predictor = list(compute = TRUE,
+                                           A = inla.stack.A(stk.full2)))
+  
+  # retrieve predicted value summary statistics
+  model.index.test <- inla.stack.index(stk.full, "pred")$data
+  mean.pred.1 <- model.1$summary.fitted.values[model.index.test, ]$mean
+  mean.pred.2 <- model.2$summary.fitted.values[model.index.test, ]$mean
+  mean.pred.3 <- model.3$summary.fitted.values[model.index.test, ]$mean
+  sd.pred.1 <- model.1$summary.fitted.values[model.index.test, ]$sd
+  sd.pred.2 <- model.2$summary.fitted.values[model.index.test, ]$sd
+  sd.pred.3 <- model.3$summary.fitted.values[model.index.test, ]$sd
+  
+  #~~~~~~~~~~
+  sigma.sq.1 <- (model.1$summary.hyperpar$mode[1])^(-1)
+  sigma.sq.2 <- (model.2$summary.hyperpar$mode[1])^(-1)
+  sigma.sq.3 <- (model.3$summary.hyperpar$mode[1])^(-1)
+  ll.pred.1 <- mean.pred.1 - 1.96 * sqrt(sd.pred.1^2 + sigma.sq.1)
+  ul.pred.1 <- mean.pred.1 + 1.96 * sqrt(sd.pred.1^2 + sigma.sq.1)
+  ll.pred.2 <- mean.pred.2 - 1.96 * sqrt(sd.pred.2^2 + sigma.sq.2)
+  ul.pred.2 <- mean.pred.2 + 1.96 * sqrt(sd.pred.2^2 + sigma.sq.2)
+  ll.pred.3 <- mean.pred.3 - 1.96 * sqrt(sd.pred.3^2 + sigma.sq.3)
+  ul.pred.3 <- mean.pred.3 + 1.96 * sqrt(sd.pred.3^2 + sigma.sq.3)
+  #~~~~~~~~~~
+  
+  # sqrt(mse)
+  rmse.1 <- c(rmse.1, sqrt(mean((PM_AQS.test - mean.pred.1) ^ 2)))
+  rmse.2 <- c(rmse.2, sqrt(mean((PM_AQS.test - mean.pred.2) ^ 2)))
+  rmse.3 <- c(rmse.3, sqrt(mean((PM_AQS.test - mean.pred.3) ^ 2)))
+  
+  # R2 -> on predicted
+  SST <- sum((PM_AQS.test - mean(PM_AQS.test)) ^ 2)
+  
+  SSR.1 <- sum((PM_AQS.test - mean.pred.1) ^ 2)
+  R2.1 <- c(R2.1, 1 - SSR.1 / SST)
+  SSR.2 <- sum((PM_AQS.test - mean.pred.2) ^ 2)
+  R2.2 <- c(R2.2, 1 - SSR.2 / SST)
+  SSR.3 <- sum((PM_AQS.test - mean.pred.3) ^ 2)
+  R2.3 <- c(R2.3, 1 - SSR.3 / SST)
+  
+  # 95% coverage
+  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  mean.pred.1.list[index.test] <- mean.pred.1
+  ll.pred.1.list[index.test] <- ll.pred.1
+  ul.pred.1.list[index.test] <- ul.pred.1
+  sd.pred.1.list[index.test] <- sd.pred.1
+  
+  mean.pred.2.list[index.test] <- mean.pred.2
+  ll.pred.2.list[index.test] <- ll.pred.2
+  ul.pred.2.list[index.test] <- ul.pred.2
+  sd.pred.2.list[index.test] <- sd.pred.2
+  
+  mean.pred.3.list[index.test] <- mean.pred.3
+  ll.pred.3.list[index.test] <- ll.pred.3
+  ul.pred.3.list[index.test] <- ul.pred.3
+  sd.pred.3.list[index.test] <- sd.pred.3
+  
+  cv.list[index.test] <- rep(i, n.test)
+}
+```
+
+
+```{r}
+data.frame("CV" = cv.list) %>%
+  bind_cols(df.0601.new[, c("PM_AQS", "PM25_TOT_NCAR")]) %>%
+  bind_cols(data.frame("mean.pred.1" = mean.pred.1.list,
+                       "ll.pred.1" = ll.pred.1.list,
+                       "ul.pred.1" = ul.pred.1.list)) %>%
+  bind_cols(data.frame("mean.pred.2" = mean.pred.2.list,
+                       "ll.pred.2" = ll.pred.2.list,
+                       "ul.pred.2" = ul.pred.2.list)) %>%
+  bind_cols(data.frame("mean.pred.3" = mean.pred.3.list,
+                       "ll.pred.3" = ll.pred.3.list,
+                       "ul.pred.3" = ul.pred.3.list)) %>%
+  #rowwise() %>%
+  mutate(covered.1 = (PM_AQS >= ll.pred.1 & PM_AQS <= ul.pred.1),
+         covered.2 = (PM_AQS >= ll.pred.2 & PM_AQS <= ul.pred.2),
+         covered.3 = (PM_AQS >= ll.pred.3 & PM_AQS <= ul.pred.3)) -> df.10fold
+df.10fold
+cor(df.10fold$PM_AQS, df.10fold$mean.pred.1)
+```
+
+```{r}
+library(huxtable)
+df.10fold %>%
+  summarise(CV = "Total",
+            RMSE.1 = sqrt(mean((PM_AQS - mean.pred.1) ^ 2)),
+            RMSE.2 = sqrt(mean((PM_AQS - mean.pred.2) ^ 2)),
+            RMSE.3 = sqrt(mean((PM_AQS - mean.pred.3) ^ 2)),
+            R2.1 = 1 - sum((PM_AQS - mean.pred.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.2 = 1 - sum((PM_AQS - mean.pred.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.3 = 1 - sum((PM_AQS - mean.pred.3) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            prop.1 = mean(covered.1),
+            prop.2 = mean(covered.2),
+            prop.3 = mean(covered.3)) %>%
+  as_huxtable() -> df.10fold.totalrow
+```
+
+
+```{r}
+df.10fold %>%
+  group_by(CV) %>%
+  summarise(RMSE.1 = sqrt(mean((PM_AQS - mean.pred.1) ^ 2)),
+            RMSE.2 = sqrt(mean((PM_AQS - mean.pred.2) ^ 2)),
+            RMSE.3 = sqrt(mean((PM_AQS - mean.pred.3) ^ 2)),
+            R2.1 = 1 - sum((PM_AQS - mean.pred.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.2 = 1 - sum((PM_AQS - mean.pred.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.3 = 1 - sum((PM_AQS - mean.pred.3) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            prop.1 = mean(covered.1),
+            prop.2 = mean(covered.2),
+            prop.3 = mean(covered.3)) %>%
+  as_huxtable() %>%
+  add_rows(df.10fold.totalrow[2, ]) %>%
+  set_top_border(row = c(1, 2, 12), col = c(1: 10)) %>%
+  set_bottom_border(row = 12, col = c(1: 10)) %>% as_flextable()
+```
+
+```{r}
+A %*% model.3$summary.random$s$mean + A.model3.train %*% model.3$summary.random$s2$mean + model.3$summary.fixed$mean[1] + model.3$summary.fixed$mean[2] * PM25_TOT_NCAR.train -> test1
+
+model.index.train <- inla.stack.index(stk.full, "est")$data
+model.3$summary.fitted.values[model.index.train,]$mean -> test2
+
+model.3$summary.fitted.values
+model.index.test
+
+
+# 07-12
+# fitted values row number meaning
+# check A matrix meaning
+# mesh stack with just training
+# simulate toy example on x locations
+
+# a week of data
+# slope could be improved
+```
+
+
+## Test Locations in Disks
+
+- spatial cross-validation with buffering
+
+```{r}
+df.model1 <- NULL
+df.model2 <- NULL
+cv.list <- rep(NA, n.total)
+```
+
+```{r}
+radius <- c(10, 100, 200)
+for (r in radius){
+  # initialization
+  mean.pred.1.list <- rep(NA, n.total)
+  mean.pred.2.list <- rep(NA, n.total)
+  ll.pred.1.list <- rep(NA, n.total)
+  ll.pred.2.list <- rep(NA, n.total)
+  ul.pred.1.list <- rep(NA, n.total)
+  ul.pred.2.list <- rep(NA, n.total)
+  rmse.1 <- NULL; rmse.2 <- NULL
+  R2.1 <- NULL; R2.2 <- NULL
+  prop.1 <- NULL; prop.2 <- NULL
+  
+  for (i in c(1: 10)){
+    index.test <- index[i]
+    names(index.test) <- NULL
+    index.test <- unlist(index.test)
+    #index.train <- setdiff(c(1: n.total), index.test)
+    df.centers <- df.0601.new[index.test, ]
+    
+    df.0601.new %>%
+      rowwise() %>%
+      filter(sum(((X_AQS_km-df.centers$X_Grid_km)^2 + 
+                  (Y_AQS_km-df.centers$Y_Grid_km)^2) <= r^2) > 0) -> df.test # interior
+    setdiff(df.0601.new, df.test) -> df.train
+    
+    # test data only contain centers
+    df.test <- subset(df.test, df.test$AQS_Site_id %in% df.centers$AQS_Site_id)
+    
+    # plots
+    ggplot() +
+      geom_sf(data = USA.contiguous.sf, fill = NA) +
+      geom_point(aes(x = LON_AQS, y = LAT_AQS, color = "Train"), size = 1,
+                data = df.train) +
+      geom_point(aes(x = LON_AQS, y = LAT_AQS, color = "Test"), size = 1, 
+                data = df.test)+
+      labs(title = element_text(paste("Fold = ", i, ", Radius = ", r, sep = ""))) +
+      theme(legend.position = "none") +
+      theme_minimal() -> plot.train
+    gridExtra::grid.arrange(plot.train)
+    
+    
+    n.test <- nrow(df.test)
+    n.train <- nrow(df.train)
+  
+    # monitors
+    points.train <- data.matrix(cbind(df.train$X_AQS_km, df.train$Y_AQS_km))
+    points.test <- data.matrix(cbind(df.test$X_AQS_km, df.test$Y_AQS_km))
+
+    # grid centroids
+    grid.pts.train <- data.matrix(cbind(df.train$X_Grid_km, df.train$Y_Grid_km))
+    grid.pts.test <- data.matrix(cbind(df.test$X_Grid_km, df.test$Y_Grid_km))
+
+    # y
+    PM_AQS.train <- df.train$PM_AQS
+    PM_AQS.test <- df.test$PM_AQS
+
+    # x
+    PM25_TOT_NCAR.train <- df.train$PM25_TOT_NCAR
+    PM25_TOT_NCAR.test <- df.test$PM25_TOT_NCAR
+  
+    mesh.train <- inla.mesh.2d(loc = points.train,
+                               cutoff = 12,
+                               max.edge = c(300, 600))
+    #plot(mesh.train)
+  
+    A <- inla.spde.make.A(mesh = mesh.train, loc = points.train)
+    Ap <- inla.spde.make.A(mesh = mesh.train, loc = points.test)
+
+    spde <- inla.spde2.matern(mesh.train, alpha = 2, constr = T)
+    mesh.index <- inla.spde.make.index(name = "s", n.spde = spde$n.spde)
+
+    # stack for estimation
+    stk.e <- inla.stack(
+      tag = "est",
+      data = list(PM_AQS = PM_AQS.train),
+      A = list(1, A),
+      effects = list(data.frame(b0 = rep(1, n.train),
+                                PM25_TOT_NCAR = PM25_TOT_NCAR.train),
+                     s = mesh.index)
+    )
+
+    # stack for prediction
+    stk.p <- inla.stack(
+      tag = "pred",
+      data = list(PM_AQS = NA),
+      A = list(1, Ap),
+      effects = list(data.frame(b0 = rep(1, n.test),
+                                PM25_TOT_NCAR = PM25_TOT_NCAR.test), 
+                    s = mesh.index)
+    )
+
+    stk.full <- inla.stack(stk.e, stk.p)
+  
+    formula.1 <- PM_AQS ~ 0 + b0 + f(s, model = spde)
+    formula.2 <- PM_AQS ~ 0 + b0 + PM25_TOT_NCAR + f(s, model = spde)
+  
+    model.1 <- inla(formula.1, data = inla.stack.data(stk.full),
+                    control.predictor = list(compute = TRUE,
+                                             A = inla.stack.A(stk.full)))
+    model.2 <- inla(formula.2, data = inla.stack.data(stk.full),
+                    control.predictor = list(compute = TRUE,
+                                             A = inla.stack.A(stk.full)))    
+    
+    
+    
+    # retrieve predicted value summary statistics
+    model.index.test <- inla.stack.index(stk.full, "pred")$data
+    mean.pred.1 <- model.1$summary.fitted.values[model.index.test, ]$mean
+    mean.pred.2 <- model.2$summary.fitted.values[model.index.test, ]$mean
+    sd.pred.1 <- model.1$summary.fitted.values[model.index.test, ]$sd
+    sd.pred.2 <- model.2$summary.fitted.values[model.index.test, ]$sd
+  
+    #~~~~~~~~~~
+    sigma.sq.1 <- (model.1$summary.hyperpar$mode[1])^(-1)
+    sigma.sq.2 <- (model.2$summary.hyperpar$mode[1])^(-1)
+    ll.pred.1 <- mean.pred.1 - 1.96 * sqrt(sd.pred.1^2 + sigma.sq.1)
+    ul.pred.1 <- mean.pred.1 + 1.96 * sqrt(sd.pred.1^2 + sigma.sq.1)
+    ll.pred.2 <- mean.pred.2 - 1.96 * sqrt(sd.pred.2^2 + sigma.sq.2)
+    ul.pred.2 <- mean.pred.2 + 1.96 * sqrt(sd.pred.2^2 + sigma.sq.2)
+    #~~~~~~~~~~
+  
+    mean.pred.1.list[index.test] <- mean.pred.1
+    ll.pred.1.list[index.test] <- ll.pred.1
+    ul.pred.1.list[index.test] <- ul.pred.1
+  
+    mean.pred.2.list[index.test] <- mean.pred.2
+    ll.pred.2.list[index.test] <- ll.pred.2
+    ul.pred.2.list[index.test] <- ul.pred.2
+  
+    cv.list[index.test] <- rep(i, n.test)
+  }
+  PM_AQS <- df.0601.new$PM_AQS
+  # root mean squared error
+  rmse.1 <- sqrt(mean((PM_AQS - mean.pred.1.list) ^ 2))
+  rmse.2 <- sqrt(mean((PM_AQS - mean.pred.2.list) ^ 2))
+  # R2
+  SSR.1 <- sum((PM_AQS - mean.pred.1.list) ^ 2)
+  SST.1 <- sum((PM_AQS - mean(PM_AQS)) ^ 2)
+  R2.1 <- c(R2.1, 1 - SSR.1 / SST.1)
+  SSR.2 <- sum((PM_AQS - mean.pred.2.list) ^ 2)
+  SST.2 <- sum((PM_AQS - mean(PM_AQS)) ^ 2)
+  R2.2 <- c(R2.2, 1 - SSR.2 / SST.2)
+  # 95% coverage
+  ll.covered.1 <- ((PM_AQS - ll.pred.1.list) >= 0)
+  ul.covered.1 <- ((ul.pred.1.list - PM_AQS) >= 0)
+  covered.1 <- ll.covered.1 & ul.covered.1
+  prop.1 <- mean(covered.1)
+  ll.covered.2 <- ((PM_AQS - ll.pred.2.list) >= 0)
+  ul.covered.2 <- ((ul.pred.2.list - PM_AQS) >= 0)
+  covered.2 <- ll.covered.2 & ul.covered.2
+  prop.2 <- mean(covered.2)
+  
+  data.frame("Model" = 1, 
+             "Radius" = paste0(r, "km"), 
+             "RMSE" = rmse.1, 
+             "R2" = R2.1, 
+             "Coverage" = prop.1) -> df.tem.1
+  data.frame("Model" = 2, 
+             "Radius" = paste0(r, "km"), 
+             "RMSE" = rmse.2, 
+             "R2" = R2.2, 
+             "Coverage" = prop.2) -> df.tem.2
+  if (is.null(df.model1)){
+    df.model1 <- df.tem.1
+  } else{
+    df.model1 <- rbind(df.model1, df.tem.1)
+  }
+  if (is.null(df.model2)){
+    df.model2 <- df.tem.2
+  } else{
+    df.model2 <- rbind(df.model2, df.tem.2)
+  }
+}
+```
+
+```{r}
+library(huxtable)
+rbind(df.model1, df.model2) %>%
+  mutate(Coverage = format(round(Coverage, 3)),
+         R2 = format(round(R2, 3))) %>%
+  as_huxtable() %>%
+  set_top_border(row = c(1, 2, 5), col = c(1: 5)) %>%
+  set_bottom_border(row = 7, col = c(1: 5)) %>%
+  set_left_border(row = c(1: 7), col = 3) %>%
+  merge_down(row = c(2: 4), col = 1) %>%
+  merge_down(row = c(5: 7), col = 1) %>%
+  set_align(row = c(2: 7), col = c(3: 5), "right") -> df.hux
+df.hux[1, 1] <- ""
+df.hux[2, 1] <- "Model 1"
+df.hux[5, 1] <- "Model 2"
+df.hux
+```
+
+# Observations of 7 Days
+
+```{r}
+df %>%
+  filter(LAT_AQS <= 42 & LON_AQS <= -114) %>%
+  filter(!(LON_AQS >= -118 & LAT_AQS <= 38 & LAT_AQS >= 34))-> df.ca
+par(pty = "s")
+plot(df.ca$LON_AQS, df.ca$LAT_AQS)
+```
+
+
+```{r}
+df.ca.7days <- df.ca[df.ca$Date %in% c("2018-06-01", "2018-06-02", "2018-06-03",
+                                       "2018-06-04", "2018-06-05", "2018-06-06",
+                                       "2018-06-07"),] %>% ungroup()
+df.ca.7days$Date <- as.character(df.ca.7days$Date)
+df.ca.7days %>%
+  left_join(relationship %>%
+              dplyr::select(AQS_Site_id, X_AQS_km, Y_AQS_km, X_Grid_km, Y_Grid_km), 
+            by = "AQS_Site_id") %>%
+  drop_na() %>%
+  mutate(Date.group = case_when(Date == "2018-06-01" ~ 1,
+                                Date == "2018-06-02" ~ 2,
+                                Date == "2018-06-03" ~ 3,
+                                Date == "2018-06-04" ~ 4,
+                                Date == "2018-06-05" ~ 5,
+                                Date == "2018-06-06" ~ 6,
+                                Date == "2018-06-07" ~ 7)) -> df.ca.7days
+```
+
+```{r}
+dim(df.ca.7days) 
+```
+
+
+
+```{r}
+points <- data.matrix(cbind(df.ca.7days$X_AQS_km, 
+                            df.ca.7days$Y_AQS_km))
+grid.pts <- data.matrix(cbind(df.ca.7days$X_Grid_km, 
+                              df.ca.7days$Y_Grid_km))
+```
+
+```{r}
+library(caret)
+set.seed(123456)
+n.total <- nrow(points)
+index <- createFolds(sample(c(1: n.total)), 10)
+
+
+
+rmse.1.1 <- NULL; rmse.2.1 <- NULL; rmse.3.1 <- NULL; rmse.4.1 <- NULL
+rmse.1.2 <- NULL; rmse.2.2 <- NULL; rmse.3.2 <- NULL; rmse.4.2 <- NULL
+
+R2.1.1 <- NULL; R2.2.1 <- NULL; R2.3.1 <- NULL; R2.4.1 <- NULL
+R2.1.2 <- NULL; R2.2.2 <- NULL; R2.3.2 <- NULL; R2.4.2 <- NULL
+
+prop.1.1 <- NULL; prop.2.1 <- NULL; prop.3.1 <- NULL; prop.4.1 <- NULL
+prop.1.2 <- NULL; prop.2.2 <- NULL; prop.3.2 <- NULL; prop.4.2 <- NULL
+
+mean.pred.1.1.list <- rep(NA, n.total); mean.pred.1.2.list <- rep(NA, n.total)
+mean.pred.2.1.list <- rep(NA, n.total); mean.pred.2.2.list <- rep(NA, n.total)
+mean.pred.3.1.list <- rep(NA, n.total); mean.pred.3.2.list <- rep(NA, n.total)
+mean.pred.4.1.list <- rep(NA, n.total); mean.pred.4.2.list <- rep(NA, n.total)
+
+ll.pred.1.1.list <- rep(NA, n.total); ll.pred.1.2.list <- rep(NA, n.total)
+ll.pred.2.1.list <- rep(NA, n.total); ll.pred.2.2.list <- rep(NA, n.total)
+ll.pred.3.1.list <- rep(NA, n.total); ll.pred.3.2.list <- rep(NA, n.total)
+ll.pred.4.1.list <- rep(NA, n.total); ll.pred.4.2.list <- rep(NA, n.total)
+
+ul.pred.1.1.list <- rep(NA, n.total); ul.pred.1.2.list <- rep(NA, n.total)
+ul.pred.2.1.list <- rep(NA, n.total); ul.pred.2.2.list <- rep(NA, n.total)
+ul.pred.3.1.list <- rep(NA, n.total); ul.pred.3.2.list <- rep(NA, n.total)
+ul.pred.4.1.list <- rep(NA, n.total); ul.pred.4.2.list <- rep(NA, n.total)
+
+sd.pred.1.1.list <- rep(NA, n.total); sd.pred.1.2.list <- rep(NA, n.total)
+sd.pred.2.1.list <- rep(NA, n.total); sd.pred.2.2.list <- rep(NA, n.total)
+sd.pred.3.1.list <- rep(NA, n.total); sd.pred.3.2.list <- rep(NA, n.total)
+sd.pred.4.1.list <- rep(NA, n.total); sd.pred.4.2.list <- rep(NA, n.total)
+
+cv.list <- rep(NA, n.total)
+Date.group.list <- rep(NA, n.total)
+df.cpo <- NULL
+```
+
+
+```{r for loop}
+radius <- 100
+for (i in c(1:10)){
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  index.test <- index[i]
+  names(index.test) <- NULL
+  index.test <- unlist(index.test)
+  
+  df.test <- df.ca.7days[index.test, ] # also as centers
+  
+  # figure out the interior set
+  df.interior <- NULL
+  for (a.row in nrow(df.test)){
+    center.X <- df.test[a.row, ]$X_AQS_km
+    center.Y <- df.test[a.row, ]$Y_AQS_km
+    center.Date.group <- df.test[a.row, ]$Date.group
+    df.ca.7days %>%
+      rowwise() %>%
+      filter((((X_AQS_km - center.X)^2 + (Y_AQS_km - center.Y)^2) <= radius^2)) -> temp.interior
+               #abs(Date.group - center.Date.group) <= 1) -> temp.interior
+    if (is.null(df.interior)){
+      df.interior <- temp.interior
+    } else{
+      df.interior <- rbind(df.interior, temp.interior)
+    }
+  }
+  
+  setdiff(df.ca.7days, df.interior) -> df.train
+    
+
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      
+  n.test <- nrow(df.test)
+  n.train <- nrow(df.train)
+  
+  # monitors
+  points.train <- data.matrix(cbind(df.train$X_AQS_km, df.train$Y_AQS_km))
+  points.test <- data.matrix(cbind(df.test$X_AQS_km, df.test$Y_AQS_km))
+
+  # grid centroids
+  grid.pts.train <- data.matrix(cbind(df.train$X_Grid_km, df.train$Y_Grid_km))
+  grid.pts.test <- data.matrix(cbind(df.test$X_Grid_km, df.test$Y_Grid_km))
+
+  # y
+  PM_AQS.train <- df.train$PM_AQS
+  PM_AQS.test <- df.test$PM_AQS
+
+  # x
+  PM25_TOT_NCAR.train <- df.train$PM25_TOT_NCAR
+  PM25_TOT_NCAR.test <- df.test$PM25_TOT_NCAR
+
+  # Dates
+  Date.group.train <- df.train$Date.group
+  Date.group.test <- df.test$Date.group
+  
+  # Diag
+  diag.train <- Diagonal(length(PM25_TOT_NCAR.train), PM25_TOT_NCAR.train)
+  diag.test <- Diagonal(length(PM25_TOT_NCAR.test), PM25_TOT_NCAR.test)
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  # Define mesh -> get observation matrix A/Ap -> get spde -> get spde index
+  # -> stack for est/pred -> combine stacks
+  
+############################# 1. Define mesh ##################################
+  mesh.train <- inla.mesh.2d(loc = points.train,
+                             cutoff = 12,
+                             max.edge = c(300, 600))
+  #plot(mesh.train)
+  
+############################# 2. Get A and Ap #################################
+  A.s <- inla.spde.make.A(mesh = mesh.train, loc = points.train)
+  Ap.s <- inla.spde.make.A(mesh = mesh.train, loc = points.test)
+  
+  A.st <- inla.spde.make.A(mesh = mesh.train, loc = points.train, group = Date.group.train)
+  Ap.st <- inla.spde.make.A(mesh = mesh.train, loc = points.test, group = Date.group.test)
+  
+  A.s.cov <- inla.spde.make.A(mesh = mesh.train, loc = points.train)
+  Ap.s.cov <- inla.spde.make.A(mesh = mesh.train, loc = points.test)
+  
+  A.st.cov <- inla.spde.make.A(mesh = mesh.train, loc = points.train, group = Date.group.train)
+  Ap.st.cov <- inla.spde.make.A(mesh = mesh.train, loc = points.test, group = Date.group.test)
+  
+  
+############################## 3. Get spde ####################################
+  spde <- inla.spde2.matern(mesh.train, alpha = 2, constr = F)
+  
+############################ 4. Get spde index ################################
+  mesh.index.s <- inla.spde.make.index(name = "s", n.spde = spde$n.spde)
+  mesh.index.s.cov <- inla.spde.make.index(name = "s.cov", n.spde = spde$n.spde)
+  mesh.index.st <- inla.spde.make.index(name = "st", n.spde = spde$n.spde, n.group = 7)
+  mesh.index.st.cov <- inla.spde.make.index(name = "st.cov", n.spde = spde$n.spde, n.group = 7)
+  
+################### 5. Stack for estimation and prediction ####################
+# 1.1
+  stk.e.1.1 <- inla.stack(tag = "est",
+                          data = list(PM_AQS = PM_AQS.train),
+                          A = list(1, A.s),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.train), 
+                                         s = mesh.index.s))
+  stk.p.1.1 <- inla.stack(tag = "pred",
+                          data = list(PM_AQS = NA),
+                          A = list(1, Ap.s),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.test), 
+                                         s = mesh.index.s))
+  #print("here")
+# 1.2
+  stk.e.1.2 <- inla.stack(tag = "est",
+                          data = list(PM_AQS = PM_AQS.train),
+                          A = list(1, A.st),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.train),
+                                         st = mesh.index.st))
+  stk.p.1.2 <- inla.stack(tag = "pred",
+                          data = list(PM_AQS = NA),
+                          A = list(1, Ap.st),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.test),
+                                         st = mesh.index.st))
+# 2.1  
+  stk.e.2.1 <- inla.stack(tag = "est",
+                          data = list(PM_AQS = PM_AQS.train),
+                          A = list(1, A.s),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.train), 
+                                         s = mesh.index.s))
+  stk.p.2.1 <- inla.stack(tag = "pred",
+                          data = list(PM_AQS = NA),
+                          A = list(1, Ap.s),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.test), 
+                                         s = mesh.index.s))
+# 2.2
+  stk.e.2.2 <- inla.stack(tag = "est",
+                          data = list(PM_AQS = PM_AQS.train),
+                          A = list(1, A.st),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.train), 
+                                         st = mesh.index.st))
+  stk.p.2.2 <- inla.stack(tag = "pred",
+                          data = list(PM_AQS = NA),
+                          A = list(1, Ap.st),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.test), 
+                                         st = mesh.index.st))
+# 3.1
+  stk.e.3.1 <- inla.stack(tag = "est",
+                          data = list(PM_AQS = PM_AQS.train),
+                          A = list(1, A.s, diag.train %*% A.s.cov),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.train),
+                                         s = mesh.index.s,
+                                         s.cov = mesh.index.s.cov))
+  stk.p.3.1 <- inla.stack(tag = "pred",
+                          data = list(PM_AQS = NA),
+                          A = list(1, Ap.s, diag.test %*% Ap.s.cov),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.test),
+                                         s = mesh.index.s,
+                                         s.cov = mesh.index.s.cov))
+# 3.2
+  stk.e.3.2 <- inla.stack(tag = "est",
+                          data = list(PM_AQS = PM_AQS.train),
+                          A = list(1, A.st, diag.train %*% A.s.cov),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.train),
+                                         st = mesh.index.st,
+                                         s.cov = mesh.index.s.cov))
+  stk.p.3.2 <- inla.stack(tag = "pred",
+                          data = list(PM_AQS = NA),
+                          A = list(1, Ap.st, diag.test %*% Ap.s.cov),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.test),
+                                         st = mesh.index.st,
+                                         s.cov = mesh.index.s.cov))
+# 4.1
+  stk.e.4.1 <- inla.stack(tag = "est",
+                          data = list(PM_AQS = PM_AQS.train),
+                          A = list(1, A.s, diag.train %*% A.st.cov),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.train),
+                                         s = mesh.index.s,
+                                         st.cov = mesh.index.st.cov))
+  stk.p.4.1 <- inla.stack(tag = "pred",
+                          data = list(PM_AQS = NA),
+                          A = list(1, Ap.s, diag.test %*% Ap.st.cov),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.test),
+                                         s = mesh.index.s,
+                                         st.cov = mesh.index.st.cov))
+# 4.2
+  stk.e.4.2 <- inla.stack(tag = "est",
+                          data = list(PM_AQS = PM_AQS.train),
+                          A = list(1, A.st, diag.train %*% A.st.cov),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.train),
+                                         st = mesh.index.st,
+                                         st.cov = mesh.index.st.cov))
+  stk.p.4.2 <- inla.stack(tag = "pred",
+                          data = list(PM_AQS = NA),
+                          A = list(1, Ap.st, diag.test %*% Ap.st.cov),
+                          effects = list(data.frame(b0 = 1,
+                                                    PM25_TOT_NCAR = PM25_TOT_NCAR.test),
+                                         st = mesh.index.st,
+                                         st.cov = mesh.index.st.cov))
+
+############################## 6. Combine stacks ###############################
+  stk.full.1.1 <- inla.stack(stk.e.1.1, stk.p.1.1)
+  stk.full.1.2 <- inla.stack(stk.e.1.2, stk.p.1.2)
+  stk.full.2.1 <- inla.stack(stk.e.2.1, stk.p.2.1)
+  stk.full.2.2 <- inla.stack(stk.e.2.2, stk.p.2.2)
+  stk.full.3.1 <- inla.stack(stk.e.3.1, stk.p.3.1)
+  stk.full.3.2 <- inla.stack(stk.e.3.2, stk.p.3.2)
+  stk.full.4.1 <- inla.stack(stk.e.4.1, stk.p.4.1)
+  stk.full.4.2 <- inla.stack(stk.e.4.2, stk.p.4.2)
+  
+################################################################################
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  # formula
+  f.1.1 <- PM_AQS ~ 0 + b0 + f(s, model = spde, constr = F)
+  f.1.2 <- PM_AQS ~ 0 + b0 + f(st, model = spde, constr = F, group = st.group, control.group = list(model = "ar1"))
+  
+  f.2.1 <- PM_AQS ~ 0 + b0 + PM25_TOT_NCAR + f(s, model = spde, constr = F)
+  f.2.2 <- PM_AQS ~ 0 + b0 + PM25_TOT_NCAR + f(st, model = spde, constr = F, group = st.group, control.group = list(model = "ar1"))
+  
+  f.3.1 <- PM_AQS ~ 0 + b0 + f(s.cov, model = spde, constr = F) + f(s, model = spde, constr = F)
+  f.3.2 <- PM_AQS ~ 0 + b0 + f(s.cov, model = spde, constr = F) + f(st, model = spde, constr = F, group = st.group, control.group = list(model = "ar1"))
+  
+  f.4.1 <- PM_AQS ~ 0 + b0 + f(st.cov, model = spde, constr = F, group = st.cov.group, control.group = list(model = "ar1")) + f(s, model = spde, constr = F)
+  f.4.2 <- PM_AQS ~ 0 + b0 + f(st.cov, model = spde, constr = F, group = st.cov.group, control.group = list(model = "ar1")) + f(st, model = spde, constr = F, group = st.group, control.group = list(model = "ar1"))
+  
+  
+  # model
+####### model spec ######################
+  model.1.1 <- inla(f.1.1, data = inla.stack.data(stk.full.1.1),
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.1.1)),
+                    control.compute = list(cpo = TRUE, dic = TRUE, waic = TRUE))
+  
+  model.1.2 <- inla(f.1.2, data = inla.stack.data(stk.full.1.2),
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.1.2)),
+                    control.compute = list(cpo = TRUE, dic = TRUE, waic = TRUE))
+  
+  model.2.1 <- inla(f.2.1, data = inla.stack.data(stk.full.2.1),
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.2.1)),
+                    control.compute = list(cpo = TRUE, dic = TRUE, waic = TRUE))
+  
+  model.2.2 <- inla(f.2.2, data = inla.stack.data(stk.full.2.2),
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.2.2)),
+                    control.compute = list(cpo = TRUE, dic = TRUE, waic = TRUE))
+  
+  model.3.1 <- inla(f.3.1, data = inla.stack.data(stk.full.3.1),
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.1)),
+                    control.compute = list(cpo = TRUE, dic = TRUE, waic = TRUE))
+  
+  model.3.2 <- inla(f.3.2, data = inla.stack.data(stk.full.3.2),
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.2)),
+                    control.compute = list(cpo = TRUE, dic = TRUE, waic = TRUE))
+  
+  model.4.1 <- inla(f.4.1, data = inla.stack.data(stk.full.4.1),
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.1)),
+                    control.compute = list(cpo = TRUE, dic = TRUE, waic = TRUE))
+  
+  model.4.2 <- inla(f.4.2, data = inla.stack.data(stk.full.4.2),
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.2)),
+                    control.compute = list(cpo = TRUE, dic = TRUE, waic = TRUE))
+  
+  #svc.3.1 <- ~ -1 + beta_0(geometry, model = spde) + beta_1(geometry, weights = PM25_TOT_NCAR)
+  #svc.3.1.f <- PM_AQS ~ .
+  
+  #model.test <- inlabru::bru(svc.3.1, like(formula = svc.3.1.f), family = "gaussian", 
+                             #options = list(
+                            #   control.compute = list(waic = TRUE, cpo = FALSE),
+                            #   control.inla = list(int.strategy = "eb"),
+                            #   verbose = FALSE), 
+                            # data = df.train)
+  
+##########################################
+  
+  # retrieve predicted value summary statistics
+########################
+  index.test.1.1 <- inla.stack.index(stk.full.1.1, "pred")$data
+  mean.pred.1.1 <- model.1.1$summary.fitted.values[index.test.1.1, ]$mean
+  sd.pred.1.1 <- model.1.1$summary.fitted.values[index.test.1.1, ]$sd
+  
+  index.test.1.2 <- inla.stack.index(stk.full.1.2, "pred")$data
+  mean.pred.1.2 <- model.1.2$summary.fitted.values[index.test.1.2, ]$mean
+  sd.pred.1.2 <- model.1.2$summary.fitted.values[index.test.1.2, ]$sd
+  
+  index.test.2.1 <- inla.stack.index(stk.full.2.1, "pred")$data
+  mean.pred.2.1 <- model.2.1$summary.fitted.values[index.test.2.1, ]$mean
+  sd.pred.2.1 <- model.2.1$summary.fitted.values[index.test.2.1, ]$sd
+  
+  index.test.2.2 <- inla.stack.index(stk.full.2.2, "pred")$data
+  mean.pred.2.2 <- model.2.2$summary.fitted.values[index.test.2.2, ]$mean
+  sd.pred.2.2 <- model.2.2$summary.fitted.values[index.test.2.2, ]$sd
+  
+  index.test.3.1 <- inla.stack.index(stk.full.3.1, "pred")$data
+  mean.pred.3.1 <- model.3.1$summary.fitted.values[index.test.3.1, ]$mean
+  sd.pred.3.1 <- model.3.1$summary.fitted.values[index.test.3.1, ]$sd
+  
+  index.test.3.2 <- inla.stack.index(stk.full.3.2, "pred")$data
+  mean.pred.3.2 <- model.3.2$summary.fitted.values[index.test.3.2, ]$mean
+  sd.pred.3.2 <- model.3.2$summary.fitted.values[index.test.3.2, ]$sd
+  
+  index.test.4.1 <- inla.stack.index(stk.full.4.1, "pred")$data
+  mean.pred.4.1 <- model.4.1$summary.fitted.values[index.test.4.1, ]$mean
+  sd.pred.4.1 <- model.4.1$summary.fitted.values[index.test.4.1, ]$sd
+  
+  index.test.4.2 <- inla.stack.index(stk.full.4.2, "pred")$data
+  mean.pred.4.2 <- model.4.2$summary.fitted.values[index.test.4.2, ]$mean
+  sd.pred.4.2 <- model.4.2$summary.fitted.values[index.test.4.2, ]$sd
+########################
+  
+
+  
+  #~~~~~~~~~~
+########################
+  sigma.sq.1.1 <- (model.1.1$summary.hyperpar$mode[1])^(-1)
+  sigma.sq.1.2 <- (model.1.2$summary.hyperpar$mode[1])^(-1)
+  sigma.sq.2.1 <- (model.2.1$summary.hyperpar$mode[1])^(-1)
+  sigma.sq.2.2 <- (model.2.2$summary.hyperpar$mode[1])^(-1)
+  sigma.sq.3.1 <- (model.3.1$summary.hyperpar$mode[1])^(-1)
+  sigma.sq.3.2 <- (model.3.2$summary.hyperpar$mode[1])^(-1)
+  sigma.sq.4.1 <- (model.4.1$summary.hyperpar$mode[1])^(-1)
+  sigma.sq.4.2 <- (model.4.2$summary.hyperpar$mode[1])^(-1)
+  
+  ll.pred.1.1 <- mean.pred.1.1 - 1.96 * sqrt(sd.pred.1.1^2 + sigma.sq.1.1)
+  ul.pred.1.1 <- mean.pred.1.1 + 1.96 * sqrt(sd.pred.1.1^2 + sigma.sq.1.1)
+  
+  ll.pred.1.2 <- mean.pred.1.2 - 1.96 * sqrt(sd.pred.1.2^2 + sigma.sq.1.2)
+  ul.pred.1.2 <- mean.pred.1.2 + 1.96 * sqrt(sd.pred.1.2^2 + sigma.sq.1.2)
+  
+  ll.pred.2.1 <- mean.pred.2.1 - 1.96 * sqrt(sd.pred.2.1^2 + sigma.sq.2.1)
+  ul.pred.2.1 <- mean.pred.2.1 + 1.96 * sqrt(sd.pred.2.1^2 + sigma.sq.2.1)
+  
+  ll.pred.2.2 <- mean.pred.2.2 - 1.96 * sqrt(sd.pred.2.2^2 + sigma.sq.2.2)
+  ul.pred.2.2 <- mean.pred.2.2 + 1.96 * sqrt(sd.pred.2.2^2 + sigma.sq.2.2)
+  
+  ll.pred.3.1 <- mean.pred.3.1 - 1.96 * sqrt(sd.pred.3.1^2 + sigma.sq.3.1)
+  ul.pred.3.1 <- mean.pred.3.1 + 1.96 * sqrt(sd.pred.3.1^2 + sigma.sq.3.1)
+  
+  ll.pred.3.2 <- mean.pred.3.2 - 1.96 * sqrt(sd.pred.3.2^2 + sigma.sq.3.2)
+  ul.pred.3.2 <- mean.pred.3.2 + 1.96 * sqrt(sd.pred.3.2^2 + sigma.sq.3.2)
+  
+  ll.pred.4.1 <- mean.pred.4.1 - 1.96 * sqrt(sd.pred.4.1^2 + sigma.sq.4.1)
+  ul.pred.4.1 <- mean.pred.4.1 + 1.96 * sqrt(sd.pred.4.1^2 + sigma.sq.4.1)
+  
+  ll.pred.4.2 <- mean.pred.4.2 - 1.96 * sqrt(sd.pred.4.2^2 + sigma.sq.4.2)
+  ul.pred.4.2 <- mean.pred.4.2 + 1.96 * sqrt(sd.pred.4.2^2 + sigma.sq.4.2)
+#########################
+
+#########################
+  mean.pred.1.1.list[index.test] <- mean.pred.1.1
+  ll.pred.1.1.list[index.test] <- ll.pred.1.1
+  ul.pred.1.1.list[index.test] <- ul.pred.1.1
+  sd.pred.1.1.list[index.test] <- sd.pred.1.1
+  
+  mean.pred.1.2.list[index.test] <- mean.pred.1.2
+  ll.pred.1.2.list[index.test] <- ll.pred.1.2
+  ul.pred.1.2.list[index.test] <- ul.pred.1.2
+  sd.pred.1.2.list[index.test] <- sd.pred.1.2
+  
+  mean.pred.2.1.list[index.test] <- mean.pred.2.1
+  ll.pred.2.1.list[index.test] <- ll.pred.2.1
+  ul.pred.2.1.list[index.test] <- ul.pred.2.1
+  sd.pred.2.1.list[index.test] <- sd.pred.2.1
+  
+  mean.pred.2.2.list[index.test] <- mean.pred.2.2
+  ll.pred.2.2.list[index.test] <- ll.pred.2.2
+  ul.pred.2.2.list[index.test] <- ul.pred.2.2
+  sd.pred.2.2.list[index.test] <- sd.pred.2.2
+  
+  mean.pred.3.1.list[index.test] <- mean.pred.3.1
+  ll.pred.3.1.list[index.test] <- ll.pred.3.1
+  ul.pred.3.1.list[index.test] <- ul.pred.3.1
+  sd.pred.3.1.list[index.test] <- sd.pred.3.1
+  
+  mean.pred.3.2.list[index.test] <- mean.pred.3.2
+  ll.pred.3.2.list[index.test] <- ll.pred.3.2
+  ul.pred.3.2.list[index.test] <- ul.pred.3.2
+  sd.pred.3.2.list[index.test] <- sd.pred.3.2
+  
+  mean.pred.4.1.list[index.test] <- mean.pred.4.1
+  ll.pred.4.1.list[index.test] <- ll.pred.4.1
+  ul.pred.4.1.list[index.test] <- ul.pred.4.1
+  sd.pred.4.1.list[index.test] <- sd.pred.4.1
+  
+  mean.pred.4.2.list[index.test] <- mean.pred.4.2
+  ll.pred.4.2.list[index.test] <- ll.pred.4.2
+  ul.pred.4.2.list[index.test] <- ul.pred.4.2
+  sd.pred.4.2.list[index.test] <- sd.pred.4.2
+  
+##########################
+  cv.list[index.test] <- rep(i, n.test)
+  Date.group.list[index.test] <- Date.group.test
+  print(paste0("iteration", i)) 
+  
+##########################
+  cpo.1.1 <- sum(log(model.1.1$cpo$cpo))
+  cpo.1.2 <- sum(log(model.1.2$cpo$cpo))
+  cpo.2.1 <- sum(log(model.2.1$cpo$cpo))
+  cpo.2.2 <- sum(log(model.2.2$cpo$cpo))
+  cpo.3.1 <- sum(log(model.3.1$cpo$cpo))
+  cpo.3.2 <- sum(log(model.3.2$cpo$cpo))
+  cpo.4.1 <- sum(log(model.4.1$cpo$cpo))
+  cpo.4.2 <- sum(log(model.4.2$cpo$cpo))
+  df.cpo <- bind_rows(df.cpo, data.frame(cv = i,
+                                         cpo.1.1, cpo.1.2, cpo.2.1, cpo.2.2, 
+                                         cpo.3.1, cpo.3.2, cpo.4.1, cpo.4.2))
+}
+```
+
+## Summary by cv
+
+```{r new 10fold df}
+library(gtsummary)
+library(huxtable)
+data.frame("CV" = cv.list) %>%
+  bind_cols(df.ca.7days[, c("PM_AQS", "PM25_TOT_NCAR")]) %>%
+  bind_cols(data.frame("mean.pred.1.1" = mean.pred.1.1.list,
+                       "ll.pred.1.1" = ll.pred.1.1.list,
+                       "ul.pred.1.1" = ul.pred.1.1.list)) %>%
+  bind_cols(data.frame("mean.pred.1.2" = mean.pred.1.2.list,
+                       "ll.pred.1.2" = ll.pred.1.2.list,
+                       "ul.pred.1.2" = ul.pred.1.2.list)) %>%
+  bind_cols(data.frame("mean.pred.2.1" = mean.pred.2.1.list,
+                       "ll.pred.2.1" = ll.pred.2.1.list,
+                       "ul.pred.2.1" = ul.pred.2.1.list)) %>%
+  bind_cols(data.frame("mean.pred.2.2" = mean.pred.2.2.list,
+                       "ll.pred.2.2" = ll.pred.2.2.list,
+                       "ul.pred.2.2" = ul.pred.2.2.list)) %>%
+  bind_cols(data.frame("mean.pred.3.1" = mean.pred.3.1.list,
+                       "ll.pred.3.1" = ll.pred.3.1.list,
+                       "ul.pred.3.1" = ul.pred.3.1.list)) %>%
+  bind_cols(data.frame("mean.pred.3.2" = mean.pred.3.2.list,
+                       "ll.pred.3.2" = ll.pred.3.2.list,
+                       "ul.pred.3.2" = ul.pred.3.2.list)) %>%
+  bind_cols(data.frame("mean.pred.4.1" = mean.pred.4.1.list,
+                       "ll.pred.4.1" = ll.pred.4.1.list,
+                       "ul.pred.4.1" = ul.pred.4.1.list)) %>%
+  bind_cols(data.frame("mean.pred.4.2" = mean.pred.4.2.list,
+                       "ll.pred.4.2" = ll.pred.4.2.list,
+                       "ul.pred.4.2" = ul.pred.4.2.list)) %>%
+  #rowwise() %>%
+  mutate(covered.1.1 = (PM_AQS >= ll.pred.1.1 & PM_AQS <= ul.pred.1.1),
+         covered.1.2 = (PM_AQS >= ll.pred.1.2 & PM_AQS <= ul.pred.1.2),
+         covered.2.1 = (PM_AQS >= ll.pred.2.1 & PM_AQS <= ul.pred.2.1),
+         covered.2.2 = (PM_AQS >= ll.pred.2.2 & PM_AQS <= ul.pred.2.2),
+         covered.3.1 = (PM_AQS >= ll.pred.3.1 & PM_AQS <= ul.pred.3.1),
+         covered.3.2 = (PM_AQS >= ll.pred.3.2 & PM_AQS <= ul.pred.3.2),
+         covered.4.1 = (PM_AQS >= ll.pred.4.1 & PM_AQS <= ul.pred.4.1),
+         covered.4.2 = (PM_AQS >= ll.pred.4.2 & PM_AQS <= ul.pred.4.2)) -> df.10fold.new
+
+df.10fold.new %>%
+  summarise(CV = "Total",
+            RMSE.1.1 = sqrt(mean((PM_AQS - mean.pred.1.1) ^ 2)),
+            RMSE.1.2 = sqrt(mean((PM_AQS - mean.pred.1.2) ^ 2)),
+            RMSE.2.1 = sqrt(mean((PM_AQS - mean.pred.2.1) ^ 2)),
+            RMSE.2.2 = sqrt(mean((PM_AQS - mean.pred.2.2) ^ 2)),
+            RMSE.3.1 = sqrt(mean((PM_AQS - mean.pred.3.1) ^ 2)),
+            RMSE.3.2 = sqrt(mean((PM_AQS - mean.pred.3.2) ^ 2)),
+            RMSE.4.1 = sqrt(mean((PM_AQS - mean.pred.4.1) ^ 2)),
+            RMSE.4.2 = sqrt(mean((PM_AQS - mean.pred.4.2) ^ 2)),
+            R2.1.1 = 1 - sum((PM_AQS - mean.pred.1.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.1.2 = 1 - sum((PM_AQS - mean.pred.1.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.2.1 = 1 - sum((PM_AQS - mean.pred.2.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.2.2 = 1 - sum((PM_AQS - mean.pred.2.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.3.1 = 1 - sum((PM_AQS - mean.pred.3.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.3.2 = 1 - sum((PM_AQS - mean.pred.3.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.4.1 = 1 - sum((PM_AQS - mean.pred.4.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.4.2 = 1 - sum((PM_AQS - mean.pred.4.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            prop.1.1 = mean(covered.1.1),
+            prop.1.2 = mean(covered.1.2),
+            prop.2.1 = mean(covered.2.1),
+            prop.2.2 = mean(covered.2.2),
+            prop.3.1 = mean(covered.3.1),
+            prop.3.2 = mean(covered.3.2),
+            prop.4.1 = mean(covered.4.1),
+            prop.4.2 = mean(covered.4.2)) -> total.row
+total.row %>%
+  huxtable::as_huxtable() -> df.10fold.new.totalrow
+df.10fold.new %>%
+  group_by(CV) %>%
+  summarise(RMSE.1.1 = sqrt(mean((PM_AQS - mean.pred.1.1) ^ 2)),
+            RMSE.1.2 = sqrt(mean((PM_AQS - mean.pred.1.2) ^ 2)),
+            RMSE.2.1 = sqrt(mean((PM_AQS - mean.pred.2.1) ^ 2)),
+            RMSE.2.2 = sqrt(mean((PM_AQS - mean.pred.2.2) ^ 2)),
+            RMSE.3.1 = sqrt(mean((PM_AQS - mean.pred.3.1) ^ 2)),
+            RMSE.3.2 = sqrt(mean((PM_AQS - mean.pred.3.2) ^ 2)),
+            RMSE.4.1 = sqrt(mean((PM_AQS - mean.pred.4.1) ^ 2)),
+            RMSE.4.2 = sqrt(mean((PM_AQS - mean.pred.4.2) ^ 2)),
+            R2.1.1 = 1 - sum((PM_AQS - mean.pred.1.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.1.2 = 1 - sum((PM_AQS - mean.pred.1.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.2.1 = 1 - sum((PM_AQS - mean.pred.2.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.2.2 = 1 - sum((PM_AQS - mean.pred.2.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.3.1 = 1 - sum((PM_AQS - mean.pred.3.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.3.2 = 1 - sum((PM_AQS - mean.pred.3.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.4.1 = 1 - sum((PM_AQS - mean.pred.4.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.4.2 = 1 - sum((PM_AQS - mean.pred.4.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            prop.1.1 = mean(covered.1.1),
+            prop.1.2 = mean(covered.1.2),
+            prop.2.1 = mean(covered.2.1),
+            prop.2.2 = mean(covered.2.2),
+            prop.3.1 = mean(covered.3.1),
+            prop.3.2 = mean(covered.3.2),
+            prop.4.1 = mean(covered.4.1),
+            prop.4.2 = mean(covered.4.2)) %>%
+  as_huxtable() %>%
+  add_rows(df.10fold.new.totalrow[2, ]) %>%
+  set_top_border(row = c(1, 2, 12), col = c(1: 25)) %>%
+  set_bottom_border(row = 12, col = c(1: 25)) %>% huxtable::as_flextable()
+```
+
+
+```{r}
+total.row[2:9] %>%
+  pivot_longer(cols = c(1:8),
+               names_prefix = "RMSE.",
+               values_to = "RMSE",
+               names_to = "Model") -> df.RMSE
+total.row[10:17] %>%
+  pivot_longer(cols = c(1:8),
+               names_prefix = "R2.",
+               values_to = "R2",
+               names_to = "Model") -> df.R2
+total.row[18:25] %>%
+  pivot_longer(cols = c(1:8),
+               names_prefix = "prop.",
+               values_to = "prop",
+               names_to = "Model") -> df.prop
+
+left_join(df.RMSE, df.R2, by = "Model") %>%
+  left_join(df.prop, by = "Model") %>%
+  pivot_longer(cols = c(2:4),
+               values_to = "value",
+               names_to = "stat") -> df.model.stats
+```
+
+
+
+```{r}
+df.model.stats %>%
+  ggplot() +
+  geom_line(aes(x = Model, y = value, group = stat, col = stat)) +
+  geom_point(aes(x = Model, y = value, group = stat, col = stat)) +
+  theme_minimal()
+```
+
+
+## Summary by day
+
+```{r}
+library(flextable)
+data.frame("Date.group" = Date.group.list) %>%
+  bind_cols(df.ca.7days[, c("PM_AQS", "PM25_TOT_NCAR")]) %>%
+  bind_cols(data.frame("mean.pred.1.1" = mean.pred.1.1.list,
+                       "ll.pred.1.1" = ll.pred.1.1.list,
+                       "ul.pred.1.1" = ul.pred.1.1.list)) %>%
+  bind_cols(data.frame("mean.pred.1.2" = mean.pred.1.2.list,
+                       "ll.pred.1.2" = ll.pred.1.2.list,
+                       "ul.pred.1.2" = ul.pred.1.2.list)) %>%
+  bind_cols(data.frame("mean.pred.2.1" = mean.pred.2.1.list,
+                       "ll.pred.2.1" = ll.pred.2.1.list,
+                       "ul.pred.2.1" = ul.pred.2.1.list)) %>%
+  bind_cols(data.frame("mean.pred.2.2" = mean.pred.2.2.list,
+                       "ll.pred.2.2" = ll.pred.2.2.list,
+                       "ul.pred.2.2" = ul.pred.2.2.list)) %>%
+  bind_cols(data.frame("mean.pred.3.1" = mean.pred.3.1.list,
+                       "ll.pred.3.1" = ll.pred.3.1.list,
+                       "ul.pred.3.1" = ul.pred.3.1.list)) %>%
+  bind_cols(data.frame("mean.pred.3.2" = mean.pred.3.2.list,
+                       "ll.pred.3.2" = ll.pred.3.2.list,
+                       "ul.pred.3.2" = ul.pred.3.2.list)) %>%
+  bind_cols(data.frame("mean.pred.4.1" = mean.pred.4.1.list,
+                       "ll.pred.4.1" = ll.pred.4.1.list,
+                       "ul.pred.4.1" = ul.pred.4.1.list)) %>%
+  bind_cols(data.frame("mean.pred.4.2" = mean.pred.4.2.list,
+                       "ll.pred.4.2" = ll.pred.4.2.list,
+                       "ul.pred.4.2" = ul.pred.4.2.list)) %>%
+  #rowwise() %>%
+  mutate(covered.1.1 = (PM_AQS >= ll.pred.1.1 & PM_AQS <= ul.pred.1.1),
+         covered.1.2 = (PM_AQS >= ll.pred.1.2 & PM_AQS <= ul.pred.1.2),
+         covered.2.1 = (PM_AQS >= ll.pred.2.1 & PM_AQS <= ul.pred.2.1),
+         covered.2.2 = (PM_AQS >= ll.pred.2.2 & PM_AQS <= ul.pred.2.2),
+         covered.3.1 = (PM_AQS >= ll.pred.3.1 & PM_AQS <= ul.pred.3.1),
+         covered.3.2 = (PM_AQS >= ll.pred.3.2 & PM_AQS <= ul.pred.3.2),
+         covered.4.1 = (PM_AQS >= ll.pred.4.1 & PM_AQS <= ul.pred.4.1),
+         covered.4.2 = (PM_AQS >= ll.pred.4.2 & PM_AQS <= ul.pred.4.2)) -> df.10fold.Date
+
+df.10fold.Date %>%
+  summarise(Date.group = "Total",
+            RMSE.1.1 = sqrt(mean((PM_AQS - mean.pred.1.1) ^ 2)),
+            RMSE.1.2 = sqrt(mean((PM_AQS - mean.pred.1.2) ^ 2)),
+            RMSE.2.1 = sqrt(mean((PM_AQS - mean.pred.2.1) ^ 2)),
+            RMSE.2.2 = sqrt(mean((PM_AQS - mean.pred.2.2) ^ 2)),
+            RMSE.3.1 = sqrt(mean((PM_AQS - mean.pred.3.1) ^ 2)),
+            RMSE.3.2 = sqrt(mean((PM_AQS - mean.pred.3.2) ^ 2)),
+            RMSE.4.1 = sqrt(mean((PM_AQS - mean.pred.4.1) ^ 2)),
+            RMSE.4.2 = sqrt(mean((PM_AQS - mean.pred.4.2) ^ 2)),
+            R2.1.1 = 1 - sum((PM_AQS - mean.pred.1.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.1.2 = 1 - sum((PM_AQS - mean.pred.1.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.2.1 = 1 - sum((PM_AQS - mean.pred.2.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.2.2 = 1 - sum((PM_AQS - mean.pred.2.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.3.1 = 1 - sum((PM_AQS - mean.pred.3.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.3.2 = 1 - sum((PM_AQS - mean.pred.3.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.4.1 = 1 - sum((PM_AQS - mean.pred.4.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.4.2 = 1 - sum((PM_AQS - mean.pred.4.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            prop.1.1 = mean(covered.1.1),
+            prop.1.2 = mean(covered.1.2),
+            prop.2.1 = mean(covered.2.1),
+            prop.2.2 = mean(covered.2.2),
+            prop.3.1 = mean(covered.3.1),
+            prop.3.2 = mean(covered.3.2),
+            prop.4.1 = mean(covered.4.1),
+            prop.4.2 = mean(covered.4.2)) -> total.row.Date
+total.row.Date %>%
+  as_huxtable() -> df.10fold.Date.totalrow
+df.10fold.Date %>%
+  group_by(Date.group) %>%
+  summarise(RMSE.1.1 = sqrt(mean((PM_AQS - mean.pred.1.1) ^ 2)),
+            RMSE.1.2 = sqrt(mean((PM_AQS - mean.pred.1.2) ^ 2)),
+            RMSE.2.1 = sqrt(mean((PM_AQS - mean.pred.2.1) ^ 2)),
+            RMSE.2.2 = sqrt(mean((PM_AQS - mean.pred.2.2) ^ 2)),
+            RMSE.3.1 = sqrt(mean((PM_AQS - mean.pred.3.1) ^ 2)),
+            RMSE.3.2 = sqrt(mean((PM_AQS - mean.pred.3.2) ^ 2)),
+            RMSE.4.1 = sqrt(mean((PM_AQS - mean.pred.4.1) ^ 2)),
+            RMSE.4.2 = sqrt(mean((PM_AQS - mean.pred.4.2) ^ 2)),
+            R2.1.1 = 1 - sum((PM_AQS - mean.pred.1.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.1.2 = 1 - sum((PM_AQS - mean.pred.1.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.2.1 = 1 - sum((PM_AQS - mean.pred.2.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.2.2 = 1 - sum((PM_AQS - mean.pred.2.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.3.1 = 1 - sum((PM_AQS - mean.pred.3.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.3.2 = 1 - sum((PM_AQS - mean.pred.3.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.4.1 = 1 - sum((PM_AQS - mean.pred.4.1) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            R2.4.2 = 1 - sum((PM_AQS - mean.pred.4.2) ^ 2) / 
+              sum((PM_AQS - mean(PM_AQS)) ^ 2),
+            prop.1.1 = mean(covered.1.1),
+            prop.1.2 = mean(covered.1.2),
+            prop.2.1 = mean(covered.2.1),
+            prop.2.2 = mean(covered.2.2),
+            prop.3.1 = mean(covered.3.1),
+            prop.3.2 = mean(covered.3.2),
+            prop.4.1 = mean(covered.4.1),
+            prop.4.2 = mean(covered.4.2)) -> df.10fold.Date.summary
+
+df.10fold.Date.summary %>%
+  as_huxtable() %>%
+  add_rows(df.10fold.Date.totalrow[2, ]) %>%
+  set_tb_borders(row = c(1, 5, 9), col = c(1: 25)) %>%
+  set_tb_border_styles(row = 5, col = c(1: 25), "dashed") %>%
+  set_tb_border_styles(row = c(1, 9), col = c(1: 25), "solid") %>%
+  huxtable::as_flextable() -> flex.Date
+#top_border_style(flex.Date)[5, ] <- "dashed"
+```
+
+```{r}
+for (j in 2:25){
+  if (j %in% c(2:9)){
+    flex.Date %>% bold(j = j, 
+                       i = which.min(df.10fold.Date.summary[,j] %>% unlist()) + 1) -> flex.Date
+  } else{
+    flex.Date %>% bold(j = j, 
+                       i = which.max(df.10fold.Date.summary[,j] %>% unlist()) + 1) -> flex.Date
+  }
+ 
+}
+flex.Date
+```
+
+
+```{r}
+df.10fold.Date.summary %>%
+  select(c(Date.group, starts_with("RMSE"))) %>%
+  pivot_longer(cols = c(2:9), names_to = "Model", 
+               values_to = "RMSE", names_prefix = "RMSE.") -> df.Date.RMSE
+
+df.10fold.Date.summary %>%
+  select(c(Date.group, starts_with("R2"))) %>%
+  pivot_longer(cols = c(2:9), names_to = "Model", 
+               values_to = "R2", names_prefix = "R2.") -> df.Date.R2
+
+df.10fold.Date.summary %>%
+  select(c(Date.group, starts_with("prop"))) %>%
+  pivot_longer(cols = c(2:9), names_to = "Model", 
+               values_to = "prop", names_prefix = "prop.") -> df.Date.prop
+df.Date.RMSE %>%
+  left_join(df.Date.R2, by = c("Date.group", "Model")) %>%
+  left_join(df.Date.prop, by = c("Date.group", "Model")) -> df.Date
+df.Date %>%
+  pivot_longer(cols = c(3:5),
+               values_to = "value",
+               names_to = "stat") -> df.Date.2
+```
+
+
+```{r}
+df.Date.2[df.Date.2$stat == "R2", ] %>%
+  ggplot() +
+  geom_line(aes(x = Date.group, y = value, group = Model, col = Model)) +
+  geom_point(aes(x = Date.group, y = value, group = Model, col = Model)) +
+  labs(title = "R Square") +
+  theme_minimal()
+```
+
+
+```{r}
+sum(log(model.1.1$cpo$cpo), na.rm = T)
+sum(log(model.1.2$cpo$cpo), na.rm = T)
+sum(log(model.2.1$cpo$cpo), na.rm = T)
+sum(log(model.2.2$cpo$cpo), na.rm = T)
+sum(log(model.3.1$cpo$cpo), na.rm = T)
+```
+
+
+```{r}
+prop.test(table(gardasil$MedAssist), p = 0.76, correct = F) -> p.test.result
+p.test.result$statistic
+prop.test(table(gardasil$Completed), p = 0.6, correct = F) 
+```
+
+
+# Notes
+
+## 2023-05-24
+
+Done:  
+  
+- are there monitors in Alaska, Hawaii?  
+- remove negative PM value rows  
+- pick a date  
+
+## 2023-06-14
+
+To-do:  
+  
+- the parameterization of the hyperparameters  
+- test locations as disks  
+
+Done:  
+  
+- include maps for the test/train locations   
+- report  
+  + sqrt(mse)   
+  + R2 between observed and estimated  
+  + 95% coverage, to calculate the percentage of training points fall within the interval  
+- 10 fold cv  
+
+## 2023-06-21
+
+To-do:  
+  
+- reformat 10-fold cv results in a df  
+- recalculate R2 on test data
+
+

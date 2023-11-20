@@ -85,7 +85,8 @@ relationship <- dat
 # California monitors only (for now)
 df %>%
   filter(LAT_AQS <= 42 & LON_AQS <= -114) %>%
-  filter(!(LON_AQS >= -118 & LAT_AQS <= 38 & LAT_AQS >= 34))-> df.ca
+  filter(!(LON_AQS >= -118 & LAT_AQS <= 38 & LAT_AQS >= 34)) %>%
+  mutate(Date = as.character(Date))-> df.ca
 
 df.ca.7days <- df.ca[df.ca$Date %in% c("2018-06-01", "2018-06-02", "2018-06-03",
                                        "2018-06-04", "2018-06-05", "2018-06-06",
@@ -193,7 +194,7 @@ for (i in c(1:10)){
   
   setdiff(df.ca.7days, df.interior) -> df.train
   
-  
+  print("Here!!!!")
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -226,12 +227,12 @@ for (i in c(1:10)){
   diag.test <- Diagonal(length(PM25_TOT_NCAR.test), PM25_TOT_NCAR.test)
   
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  
+  print("before 1")
   ### 1. Define mesh -----------------------------------------------------------
   mesh.train <- inla.mesh.2d(loc = points.train,
                              cutoff = 12,
                              max.edge = c(300, 600))
-  
+  print("after 1")
   ## 2. Get A and Ap -----------------------------------------------------------
   A.s <- inla.spde.make.A(mesh = mesh.train, loc = points.train)
   Ap.s <- inla.spde.make.A(mesh = mesh.train, loc = points.test)
@@ -245,16 +246,16 @@ for (i in c(1:10)){
   A.st.cov <- inla.spde.make.A(mesh = mesh.train, loc = points.train, group = Date.group.train)
   Ap.st.cov <- inla.spde.make.A(mesh = mesh.train, loc = points.test, group = Date.group.test)
   
-  
+  print("after 2")
   ## 3. Get spde ---------------------------------------------------------------
   spde <- inla.spde2.matern(mesh.train, alpha = 2, constr = F)
-  
+  print("after 3")
   ## 4. Get spde index ---------------------------------------------------------
   mesh.index.s <- inla.spde.make.index(name = "s", n.spde = spde$n.spde)
   mesh.index.s.cov <- inla.spde.make.index(name = "s.cov", n.spde = spde$n.spde)
   mesh.index.st <- inla.spde.make.index(name = "st", n.spde = spde$n.spde, n.group = 7)
   mesh.index.st.cov <- inla.spde.make.index(name = "st.cov", n.spde = spde$n.spde, n.group = 7)
-  
+  print("after 4")
   ## 5. Stack for estimation and prediction ------------------------------------
   # 1.1
   stk.e.1.1 <- inla.stack(tag = "est",
@@ -369,7 +370,7 @@ for (i in c(1:10)){
                                                     PM25_TOT_NCAR = PM25_TOT_NCAR.test),
                                          st = mesh.index.st,
                                          st.cov = mesh.index.st.cov))
-  
+  print("after 5")
   ## 6. Combine stacks ---------------------------------------------------------
   stk.full.1.1 <- inla.stack(stk.e.1.1, stk.p.1.1)
   stk.full.1.2 <- inla.stack(stk.e.1.2, stk.p.1.2)
@@ -379,7 +380,7 @@ for (i in c(1:10)){
   stk.full.3.2 <- inla.stack(stk.e.3.2, stk.p.3.2)
   stk.full.4.1 <- inla.stack(stk.e.4.1, stk.p.4.1)
   stk.full.4.2 <- inla.stack(stk.e.4.2, stk.p.4.2)
-  
+  print("after 6")
   
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   
@@ -396,7 +397,7 @@ for (i in c(1:10)){
   f.4.1 <- PM_AQS ~ 0 + b0 + f(st.cov, model = spde, constr = F, group = st.cov.group, control.group = list(model = "ar1")) + f(s, model = spde, constr = F)
   f.4.2 <- PM_AQS ~ 0 + b0 + f(st.cov, model = spde, constr = F, group = st.cov.group, control.group = list(model = "ar1")) + f(st, model = spde, constr = F, group = st.group, control.group = list(model = "ar1"))
   
-  
+  print("after formula")
   # model
   ####### model spec ######################
   model.1.1 <- inla(f.1.1, data = inla.stack.data(stk.full.1.1),
@@ -422,7 +423,7 @@ for (i in c(1:10)){
   
   model.4.2 <- inla(f.4.2, data = inla.stack.data(stk.full.4.2),
                     control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.2)))
-  
+  print("after model")
   #svc.3.1 <- ~ -1 + beta_0(geometry, model = spde) + beta_1(geometry, weights = PM25_TOT_NCAR)
   #svc.3.1.f <- PM_AQS ~ .
   
@@ -549,6 +550,8 @@ for (i in c(1:10)){
   Date.group.list[index.test] <- Date.group.test
   print(paste0("iteration", i)) 
 }
+
+
 
 # Output -----------------------------------------------------------------------
 NULL %>%

@@ -5,7 +5,6 @@ library(haven)
 library(knitr)
 library(tidyverse)
 library(sf)
-library(caret)
 
 # Import datasets --------------------------------------------------------------
 
@@ -114,7 +113,23 @@ grid.pts <- data.matrix(cbind(df.ca.7days$X_Grid_km,
 
 set.seed(123456)
 n.total <- nrow(points)
-index <- createFolds(sample(c(1: n.total)), 10)
+base.size <- n.total %/% 10
+row.num.list <- sample(n.total)
+
+index <- NULL
+
+for (i in c(1:10)){
+  index <- c(index, list(sample(row.num.list, base.size)))
+  row.num.list <- row.num.list[!(row.num.list %in% index[[i]])]
+}
+
+idx <- 1
+for (r in row.num.list){
+  index[[idx]] <- c(index[[idx]], r)
+  idx <- idx + 1
+}
+
+#index <- createFolds(sample(c(1: n.total)), 10)
 
 rmse.1.1 <- NULL; rmse.2.1 <- NULL; rmse.3.1 <- NULL; rmse.4.1 <- NULL
 rmse.1.2 <- NULL; rmse.2.2 <- NULL; rmse.3.2 <- NULL; rmse.4.2 <- NULL

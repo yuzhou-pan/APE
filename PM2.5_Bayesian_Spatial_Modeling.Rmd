@@ -79,6 +79,8 @@ hist(PM_grid$PM25_TOT_NCAR)
 #  filter(!is.na(PM_AQS) & !is.na(PM25_TOT_NCAR)) %>%
 #  arrange(desc(PM_AQS)) 
 ```
+
+
 ```{r}
 hist(log(PM_grid$PM_AQS))
 hist(log(PM_grid$PM25_TOT_NCAR))

@@ -589,6 +589,6 @@ NULL %>%
     ll.pred.1.1.list, ll.pred.1.2.list, ll.pred.2.1.list, ll.pred.2.2.list,
     ll.pred.3.1.list, ll.pred.3.2.list, ll.pred.4.1.list, ll.pred.4.2.list,
     ul.pred.1.1.list, ul.pred.1.2.list, ul.pred.2.1.list, ul.pred.2.2.list,
-    ul.pred.3.1.list, ul.pred.3.2.list, ul.pred.4.1.list, ul.pred.4.2.list)) -> result.10fold.100radius
+    ul.pred.3.1.list, ul.pred.3.2.list, ul.pred.4.1.list, ul.pred.4.2.list)) -> result.full.7days
 
-write.csv(result.10fold.100radius, "result.full.7days.csv", row.names = F)
+write.csv(result.full.7days, "result.full.7days.csv", row.names = F)

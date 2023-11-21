@@ -5,6 +5,7 @@ library(haven)
 library(knitr)
 library(tidyverse)
 library(sf)
+inla.binary.install(os = "CentOS Linux-7")
 
 # Import datasets --------------------------------------------------------------
 

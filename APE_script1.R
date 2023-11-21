@@ -12,6 +12,11 @@ PM_AQS_2018 <- read_sas("PM_AQS_2018.sas7bdat")
 grid <- read_sas("grid_model_pm_o3_2018.sas7bdat")
 dat <- read_sas("Relationship_File_AQS_Model_PM.sas7bdat") 
 
+# to see whether datasets are correctly imported
+print(dim(PM_AQS_2018))
+print(dim(grid))
+print(dim(dat))
+
 # Match each PM2.5 monitor to the nearest grid cell ----------------------------
 
 grid$Grid_lon_new <- grid$Grid_lon-360

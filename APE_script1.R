@@ -8,9 +8,9 @@ library(sf)
 
 # Import datasets --------------------------------------------------------------
 
-PM_AQS_2018 <- read_sas("PM_AQS_2018.sas7bdat")
-grid <- read_sas("grid_model_pm_o3_2018.sas7bdat")
-dat <- read_sas("Relationship_File_AQS_Model_PM.sas7bdat") 
+PM_AQS_2018 <- read_sas("/home/ypan246/PM_AQS_2018.sas7bdat")
+grid <- read_sas("/home/ypan246/grid_model_pm_o3_2018.sas7bdat")
+dat <- read_sas("/home/ypan246/Relationship_File_AQS_Model_PM.sas7bdat") 
 
 # Match each PM2.5 monitor to the nearest grid cell ----------------------------
 

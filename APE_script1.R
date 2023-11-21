@@ -82,17 +82,41 @@ dat$Y_Grid_km <- XY$Y / 1000
 
 relationship <- dat
 
-# California monitors only (for now)
-df %>%
-  filter(LAT_AQS <= 42 & LON_AQS <= -114) %>%
-  filter(!(LON_AQS >= -118 & LAT_AQS <= 38 & LAT_AQS >= 34)) %>%
-  mutate(Date = as.character(Date))-> df.ca
+# California monitors only (for now) -------------------------------------------
+#df %>%
+#  filter(LAT_AQS <= 42 & LON_AQS <= -114) %>%
+#  filter(!(LON_AQS >= -118 & LAT_AQS <= 38 & LAT_AQS >= 34)) %>%
+#  mutate(Date = as.character(Date))-> df.ca
 
-df.ca.7days <- df.ca[df.ca$Date %in% c("2018-06-01", "2018-06-02", "2018-06-03",
-                                       "2018-06-04", "2018-06-05", "2018-06-06",
-                                       "2018-06-07"),] %>% ungroup()
-df.ca.7days$Date <- as.character(df.ca.7days$Date)
-df.ca.7days %>%
+#df.ca.7days <- df.ca[df.ca$Date %in% c("2018-06-01", "2018-06-02", "2018-06-03",
+#                                       "2018-06-04", "2018-06-05", "2018-06-06",
+#                                       "2018-06-07"),] %>% ungroup()
+#df.ca.7days$Date <- as.character(df.ca.7days$Date)
+#df.ca.7days %>%
+#  left_join(relationship %>%
+#              dplyr::select(AQS_Site_id, X_AQS_km, Y_AQS_km, X_Grid_km, Y_Grid_km), 
+#            by = "AQS_Site_id") %>%
+#  drop_na() %>%
+#  mutate(Date.group = case_when(Date == "2018-06-01" ~ 1,
+#                                Date == "2018-06-02" ~ 2,
+#                                Date == "2018-06-03" ~ 3,
+#                                Date == "2018-06-04" ~ 4,
+#                                Date == "2018-06-05" ~ 5,
+#                                Date == "2018-06-06" ~ 6,
+#                                Date == "2018-06-07" ~ 7)) -> df.ca.7days
+
+#points <- data.matrix(cbind(df.ca.7days$X_AQS_km, 
+#                            df.ca.7days$Y_AQS_km))
+#grid.pts <- data.matrix(cbind(df.ca.7days$X_Grid_km, 
+#                              df.ca.7days$Y_Grid_km))
+
+# All monitors -----------------------------------------------------------------
+
+df.7days <- df[df$Date %in% c("2018-06-01", "2018-06-02", "2018-06-03",
+                              "2018-06-04", "2018-06-05", "2018-06-06",
+                              "2018-06-07"),] %>% ungroup()
+df.7days$Date <- as.character(df.7days$Date)
+df.7days %>%
   left_join(relationship %>%
               dplyr::select(AQS_Site_id, X_AQS_km, Y_AQS_km, X_Grid_km, Y_Grid_km), 
             by = "AQS_Site_id") %>%
@@ -103,12 +127,12 @@ df.ca.7days %>%
                                 Date == "2018-06-04" ~ 4,
                                 Date == "2018-06-05" ~ 5,
                                 Date == "2018-06-06" ~ 6,
-                                Date == "2018-06-07" ~ 7)) -> df.ca.7days
+                                Date == "2018-06-07" ~ 7)) -> df.7days
 
-points <- data.matrix(cbind(df.ca.7days$X_AQS_km, 
-                            df.ca.7days$Y_AQS_km))
-grid.pts <- data.matrix(cbind(df.ca.7days$X_Grid_km, 
-                              df.ca.7days$Y_Grid_km))
+points <- data.matrix(cbind(df.7days$X_AQS_km, 
+                            df.7days$Y_AQS_km))
+grid.pts <- data.matrix(cbind(df.7days$X_Grid_km, 
+                              df.7days$Y_Grid_km))
 
 ## initialization --------------------------------------------------------------
 
@@ -173,7 +197,7 @@ for (i in c(1:10)){
   names(index.test) <- NULL
   index.test <- unlist(index.test)
   
-  df.test <- df.ca.7days[index.test, ] # also as centers
+  df.test <- df.7days[index.test, ] # also as centers
   
   # figure out the interior set
   df.interior <- NULL
@@ -181,7 +205,7 @@ for (i in c(1:10)){
     center.X <- df.test[a.row, ]$X_AQS_km
     center.Y <- df.test[a.row, ]$Y_AQS_km
     center.Date.group <- df.test[a.row, ]$Date.group
-    df.ca.7days %>%
+    df.7days %>%
       rowwise() %>%
       filter((((X_AQS_km - center.X)^2 + (Y_AQS_km - center.Y)^2) <= radius^2)) -> temp.interior
     #abs(Date.group - center.Date.group) <= 1) -> temp.interior
@@ -192,7 +216,7 @@ for (i in c(1:10)){
     }
   }
   
-  setdiff(df.ca.7days, df.interior) -> df.train
+  setdiff(df.7days, df.interior) -> df.train
   
   print("Here!!!!")
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -555,7 +579,7 @@ for (i in c(1:10)){
 
 # Output -----------------------------------------------------------------------
 NULL %>%
-  bind_cols(df.ca.7days[, c("PM_AQS", "PM25_TOT_NCAR")]) %>%
+  bind_cols(df.7days[, c("PM_AQS", "PM25_TOT_NCAR")]) %>%
   bind_cols(data.frame(
     cv.list, Date.group.list,
     mean.pred.1.1.list, mean.pred.1.2.list, mean.pred.2.1.list, mean.pred.2.2.list,
@@ -567,4 +591,4 @@ NULL %>%
     ul.pred.1.1.list, ul.pred.1.2.list, ul.pred.2.1.list, ul.pred.2.2.list,
     ul.pred.3.1.list, ul.pred.3.2.list, ul.pred.4.1.list, ul.pred.4.2.list)) -> result.10fold.100radius
 
-write.csv(result.10fold.100radius, "result.10fold.100radius.csv", row.names = F)
+write.csv(result.10fold.100radius, "result.full.7days.csv", row.names = F)

@@ -118,10 +118,11 @@ relationship <- dat
 
 # All monitors -----------------------------------------------------------------
 
+df$Date <- as.character(df$Date)
 df.7days <- df[df$Date %in% c("2018-06-01", "2018-06-02", "2018-06-03",
                               "2018-06-04", "2018-06-05", "2018-06-06",
                               "2018-06-07"),] %>% ungroup()
-df.7days$Date <- as.character(df.7days$Date)
+
 df.7days %>%
   left_join(relationship %>%
               dplyr::select(AQS_Site_id, X_AQS_km, Y_AQS_km, X_Grid_km, Y_Grid_km), 
@@ -258,6 +259,10 @@ for (i in c(1:10)){
   
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   print("before 1")
+  print(paste0("df.7days dimensions: ", dim(df.7days)))
+  print(paste0("df.interior dimensions: ", dim(df.interior)))
+  print(paste0("df.train dimemsions: ", dim(df.train)))
+  print(paste0("points.train dimensions: ", dim(points.train)))
   ### 1. Define mesh -----------------------------------------------------------
   mesh.train <- inla.mesh.2d(loc = points.train,
                              cutoff = 12,

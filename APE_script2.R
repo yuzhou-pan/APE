@@ -5,7 +5,7 @@ library(haven)
 library(knitr)
 library(tidyverse)
 library(sf)
-#inla.binary.install(os = "CentOS Linux-7")
+inla.binary.install(os = "CentOS Linux-7")
 
 # Date range -------------------------------------------------------------------
 

@@ -586,12 +586,4 @@ for (w in c(1:num.weeks)){
   result.full <- bind_rows(result.full, result.full.7days)
 }
 
-
-
-
-
-
-
-
-
-write.csv(result.full.7days, "result.full.7days.csv", row.names = F)
+write.csv(result.full, "result.full.csv", row.names = F)

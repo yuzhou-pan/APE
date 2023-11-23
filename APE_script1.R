@@ -207,21 +207,10 @@ for (i in c(1:10)){
   df.test <- df.7days[index.test, ] # also as centers
   
   # figure out the interior set
-  df.interior <- NULL
-  for (a.row in nrow(df.test)){
-    center.X <- df.test[a.row, ]$X_AQS_km
-    center.Y <- df.test[a.row, ]$Y_AQS_km
-    center.Date.group <- df.test[a.row, ]$Date.group
-    df.7days %>%
-      rowwise() %>%
-      filter((((X_AQS_km - center.X)^2 + (Y_AQS_km - center.Y)^2) <= radius^2)) -> temp.interior
-    #abs(Date.group - center.Date.group) <= 1) -> temp.interior
-    if (is.null(df.interior)){
-      df.interior <- temp.interior
-    } else{
-      df.interior <- rbind(df.interior, temp.interior)
-    }
-  }
+  df.7days %>%
+    rowwise() %>%
+    filter(sum(((X_AQS_km-df.test$X_AQS_km)^2 + 
+                (Y_AQS_km-df.test$Y_AQS_km)^2) <= radius^2) > 0) -> df.interior
   
   setdiff(df.7days, df.interior) -> df.train
   

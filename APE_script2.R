@@ -5,104 +5,21 @@ library(haven)
 library(knitr)
 library(tidyverse)
 library(sf)
-inla.binary.install(os = "CentOS Linux-7")
+#!/usr/bin/env Rscript
 
-# Date range -------------------------------------------------------------------
+# grab the array id value from the environment variable passed from sbatch
+slurm_arrayid <- Sys.getenv('SLURM_ARRAY_TASK_ID')
 
-Date.start <- "2018-01-01"
-Date.end <- "2018-12-31"
+# coerce the value to an integer
+n <- as.numeric(slurm_arrayid)
 
-# Import datasets --------------------------------------------------------------
+#if (n == 1){
+#  inla.binary.install(os = "CentOS Linux-7")
+#}
 
-PM_AQS_2018 <- read_sas("PM_AQS_2018.sas7bdat")
-grid <- read_sas("grid_model_pm_o3_2018.sas7bdat")
-dat <- read_sas("Relationship_File_AQS_Model_PM.sas7bdat") 
 
-# to see whether datasets are correctly imported
-print(dim(PM_AQS_2018))
-print(dim(grid))
-print(dim(dat))
+#sessionInfo()
 
-# Match each PM2.5 monitor to the nearest grid cell ----------------------------
-
-grid$Grid_lon_new <- grid$Grid_lon-360
-
-PM_AQS_2018 %>%
-  dplyr::select(LAT_AQS, LON_AQS, Date) -> key
-
-grid %>% distinct(Grid_lat, Grid_lon_new) -> distinct_grid_lat_lon
-
-PM_AQS_2018 %>%
-  distinct(LAT_AQS, LON_AQS) %>%
-  cross_join(distinct_grid_lat_lon) %>%
-  mutate(euclid_dist = sqrt((Grid_lat-LAT_AQS)^2+(Grid_lon_new-LON_AQS)^2)) %>%
-  group_by(LAT_AQS, LON_AQS) %>%
-  slice_min(euclid_dist) -> PM_grid_pairs
-
-PM_AQS_2018 %>%
-  left_join(PM_grid_pairs) %>%
-  left_join(grid, by = c("Date" = "date", 
-                         "Grid_lat" = "Grid_lat", 
-                         "Grid_lon_new" = "Grid_lon_new")) %>%
-  dplyr::select(Date, PM_AQS, PM25_TOT_NCAR, LAT_AQS, LON_AQS, Grid_lat, Grid_lon, 
-                AQS_Site_id) -> PM_grid
-
-# Remove neg or NA PM values ---------------------------------------------------
-df <- PM_grid
-df %>%
-  drop_na(PM_AQS, PM25_TOT_NCAR) %>%
-  filter(PM_AQS >= 0) %>%
-  rowwise() %>%
-  mutate(Grid_lon = Grid_lon - 360) -> df
-
-# Non Euclid -> Euclid locations in km -----------------------------------------
-# Source: Define coordinates.R
-
-## Monitors --------------------------------------------------------------------
-# Create spatial point object
-geo.x = mapply ( function (x,y){c(x,y)}, x=dat$LON_AQS, y=dat$LAT_AQS , SIMPLIFY=FALSE)
-geo.x = lapply (geo.x, st_point)
-geo.x = st_sfc(geo.x, crs = 4326) 
-geo.x = st_transform(geo.x, crs = "ESRI:102004")
-
-#Euclidian XY in meters
-XY = as.data.frame(st_coordinates(geo.x))
-dat$X_AQS = XY$X
-dat$Y_AQS = XY$Y
-
-# Transfer it to km
-dat$X_AQS_km <- XY$X / 1000
-dat$Y_AQS_km <- XY$Y / 1000
-
-## Grid ------------------------------------------------------------------------
-geo.x = mapply ( function (x,y){c(x,y)}, x=dat$Grid_LON, y=dat$Grid_LAT, SIMPLIFY=FALSE)
-geo.x = lapply (geo.x, st_point)
-geo.x = st_sfc(geo.x, crs = 4326) 
-geo.x = st_transform(geo.x, crs = "ESRI:102004")
-
-#Euclidian XY in meters
-XY = as.data.frame(st_coordinates(geo.x))
-dat$X_AQS = XY$X
-dat$Y_AQS = XY$Y
-
-# Transfer it to km
-dat$X_Grid_km <- XY$X / 1000
-dat$Y_Grid_km <- XY$Y / 1000
-
-# SPDE -------------------------------------------------------------------------
-
-relationship <- dat
-
-## All monitors ----------------------------------------------------------------
-
-df$Date <- as.character(df$Date)
-
-df %>%
-  left_join(relationship %>%
-              dplyr::select(AQS_Site_id, X_AQS_km, Y_AQS_km, X_Grid_km, Y_Grid_km), 
-            by = "AQS_Site_id") %>%
-  drop_na() %>%
-  mutate(Date.group = as.numeric(as.Date(Date) - as.Date("2018-01-01")) + 1) -> df
 
 ## divide 365 days into multiple windows ---------------------------------------
 
@@ -118,9 +35,13 @@ range.Date.group <- NULL
 
 set.seed(123456)
 result.full <- NULL
-for (w in c(1:num.weeks)){
+
+#n=2
+range.weeks <- c(((n-1)*4+1): (n*4))
+for (w in range.weeks){
+  #w = 5
   range.Date.group <- c(((w-1)*7+1): (w*7))
-  df.7days <- df[df$Date.group %in% range.Date.group,] %>% ungroup()
+  df.7days <- read.csv(paste0("df.7days.", w, ".csv"), header = T)
   
   points <- data.matrix(cbind(df.7days$X_AQS_km, 
                               df.7days$Y_AQS_km))
@@ -184,6 +105,7 @@ for (w in c(1:num.weeks)){
   radius <- 100
   for (i in c(1:10)){
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #i=1
     index.test <- index[i]
     names(index.test) <- NULL
     index.test <- unlist(index.test)
@@ -191,23 +113,24 @@ for (w in c(1:num.weeks)){
     df.test <- df.7days[index.test, ] # also as centers
     
     # figure out the interior set
-    df.interior <- NULL
-    for (a.row in nrow(df.test)){
-      center.X <- df.test[a.row, ]$X_AQS_km
-      center.Y <- df.test[a.row, ]$Y_AQS_km
-      center.Date.group <- df.test[a.row, ]$Date.group
-      df.7days %>%
-        rowwise() %>%
-        filter((((X_AQS_km - center.X)^2 + (Y_AQS_km - center.Y)^2) <= radius^2)) -> temp.interior
-      #abs(Date.group - center.Date.group) <= 1) -> temp.interior
-      if (is.null(df.interior)){
-        df.interior <- temp.interior
-      } else{
-        df.interior <- rbind(df.interior, temp.interior)
-      }
-    }
+    #df.interior <- NULL
+    df.7days %>%
+      rowwise() %>%
+      filter(sum(((X_AQS_km-df.test$X_AQS_km)^2 + 
+                  (Y_AQS_km-df.test$Y_AQS_km)^2) <= radius^2) > 0) -> df.interior
     
     setdiff(df.7days, df.interior) -> df.train
+    
+    #ggplot() +
+    #  geom_sf(data = USA.contiguous.sf, fill = NA) +
+    #  geom_point(aes(x = LON_AQS, y = LAT_AQS, color = "Train"), size = 1,
+    #             data = df.train) +
+    #  geom_point(aes(x = LON_AQS, y = LAT_AQS, color = "Test"), size = 1, 
+    #             data = df.test)+
+    #  labs(title = element_text(paste("Fold = ", i, ", Radius = ", radius, sep = ""))) +
+    #  theme(legend.position = "none") +
+    #  theme_minimal() -> plot.train
+    #gridExtra::grid.arrange(plot.train)
     
     print("Here!!!!")
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -234,8 +157,11 @@ for (w in c(1:num.weeks)){
     PM25_TOT_NCAR.test <- df.test$PM25_TOT_NCAR
     
     # Dates
-    Date.group.train <- df.train$Date.group
-    Date.group.test <- df.test$Date.group
+    Date.group.train <- df.train$Date.group %% 7
+    Date.group.train[Date.group.train == 0] <- 7
+    Date.group.test <- df.test$Date.group %% 7
+    Date.group.test[Date.group.test == 0] <- 7
+    
     
     # Diag
     diag.train <- Diagonal(length(PM25_TOT_NCAR.train), PM25_TOT_NCAR.train)
@@ -290,6 +216,7 @@ for (w in c(1:num.weeks)){
                                                       PM25_TOT_NCAR = PM25_TOT_NCAR.test), 
                                            s = mesh.index.s))
     #print("here")
+    
     # 1.2
     stk.e.1.2 <- inla.stack(tag = "est",
                             data = list(PM_AQS = PM_AQS.train),
@@ -303,6 +230,7 @@ for (w in c(1:num.weeks)){
                             effects = list(data.frame(b0 = 1,
                                                       PM25_TOT_NCAR = PM25_TOT_NCAR.test),
                                            st = mesh.index.st))
+   
     # 2.1  
     stk.e.2.1 <- inla.stack(tag = "est",
                             data = list(PM_AQS = PM_AQS.train),
@@ -586,4 +514,4 @@ for (w in c(1:num.weeks)){
   result.full <- bind_rows(result.full, result.full.7days)
 }
 
-write.csv(result.full, "result.full.csv", row.names = F)
+write.csv(result.full, paste0("result.full.", n, ".csv"), row.names = F)

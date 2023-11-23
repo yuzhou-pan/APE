@@ -5,5 +5,5 @@
 
 ## Notes (2023-11-23)
 1. Need to binary install INLA for linux-based HPC cluster
-2. On HPC cluster script 1 "fails to get good initial values" so INLA crashes at the 10th iteration.
+2. Sbatch script 1 "fails to get good initial values" so INLA crashes at the 10th iteration.
     - Current soln: add verbose = TRUE argument and re-run the script

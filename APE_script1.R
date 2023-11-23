@@ -5,7 +5,7 @@ library(haven)
 library(knitr)
 library(tidyverse)
 library(sf)
-inla.binary.install(os = "CentOS Linux-7")
+#inla.binary.install(os = "CentOS Linux-7")
 
 # Import datasets --------------------------------------------------------------
 
@@ -425,28 +425,44 @@ for (i in c(1:10)){
   # model
   ####### model spec ######################
   model.1.1 <- inla(f.1.1, data = inla.stack.data(stk.full.1.1),
-                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.1.1)))
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.1.1)),
+                    control.compute = list(openmp.strategy="huge"), num.threads = 1,
+                    verbose = TRUE)
   
   model.1.2 <- inla(f.1.2, data = inla.stack.data(stk.full.1.2),
-                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.1.2)))
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.1.2)),
+                    control.compute = list(openmp.strategy="huge"), num.threads = 1,
+                    verbose = TRUE)
   
   model.2.1 <- inla(f.2.1, data = inla.stack.data(stk.full.2.1),
-                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.2.1)))
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.2.1)),
+                    control.compute = list(openmp.strategy="huge"), num.threads = 1, 
+                    verbose = TRUE)
   
   model.2.2 <- inla(f.2.2, data = inla.stack.data(stk.full.2.2),
-                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.2.2)))
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.2.2)),
+                    control.compute = list(openmp.strategy="huge"), num.threads = 1,
+                    verbose = TRUE)
   
   model.3.1 <- inla(f.3.1, data = inla.stack.data(stk.full.3.1),
-                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.1)))
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.1)),
+                    control.compute = list(openmp.strategy="huge"), num.threads = 1,
+                    verbose = TRUE)
   
   model.3.2 <- inla(f.3.2, data = inla.stack.data(stk.full.3.2),
-                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.2)))
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.2)),
+                    control.compute = list(openmp.strategy="huge"), num.threads = 1,
+                    verbose = TRUE)
   
   model.4.1 <- inla(f.4.1, data = inla.stack.data(stk.full.4.1),
-                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.1)))
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.1)),
+                    control.compute = list(openmp.strategy="huge"), num.threads = 1,
+                    verbose = TRUE)
   
   model.4.2 <- inla(f.4.2, data = inla.stack.data(stk.full.4.2),
-                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.2)))
+                    control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.2)),
+                    control.compute = list(openmp.strategy="huge"), num.threads = 1, 
+                    verbose = TRUE)
   print("after model")
   #svc.3.1 <- ~ -1 + beta_0(geometry, model = spde) + beta_1(geometry, weights = PM25_TOT_NCAR)
   #svc.3.1.f <- PM_AQS ~ .

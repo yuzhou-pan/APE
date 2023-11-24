@@ -193,7 +193,9 @@ for (w in range.weeks){
     
     print("after 2")
     ## 3. Get spde ---------------------------------------------------------------
-    spde <- inla.spde2.matern(mesh.train, alpha = 2, constr = F)
+    spde <- inla.spde2.pcmatern(mesh.train, alpha = 2, constr = F,
+                                prior.range = c(20, 0.05), 
+                                prior.sigma = c(22, 0.01))
     print("after 3")
     ## 4. Get spde index ---------------------------------------------------------
     mesh.index.s <- inla.spde.make.index(name = "s", n.spde = spde$n.spde)
@@ -348,28 +350,36 @@ for (w in range.weeks){
     # model
     ####### model spec ######################
     model.1.1 <- inla(f.1.1, data = inla.stack.data(stk.full.1.1),
-                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.1.1)))
+                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.1.1)),
+                      control.compute = list(openmp.strategy="huge"), num.threads = 1)
     
     model.1.2 <- inla(f.1.2, data = inla.stack.data(stk.full.1.2),
-                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.1.2)))
+                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.1.2)),
+                      control.compute = list(openmp.strategy="huge"), num.threads = 1)
     
     model.2.1 <- inla(f.2.1, data = inla.stack.data(stk.full.2.1),
-                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.2.1)))
+                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.2.1)),
+                      control.compute = list(openmp.strategy="huge"), num.threads = 1)
     
     model.2.2 <- inla(f.2.2, data = inla.stack.data(stk.full.2.2),
-                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.2.2)))
+                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.2.2)),
+                      control.compute = list(openmp.strategy="huge"), num.threads = 1)
     
     model.3.1 <- inla(f.3.1, data = inla.stack.data(stk.full.3.1),
-                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.1)))
+                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.1)),
+                      control.compute = list(openmp.strategy="huge"), num.threads = 1)
     
     model.3.2 <- inla(f.3.2, data = inla.stack.data(stk.full.3.2),
-                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.2)))
+                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.2)),
+                      control.compute = list(openmp.strategy="huge"), num.threads = 1)
     
     model.4.1 <- inla(f.4.1, data = inla.stack.data(stk.full.4.1),
-                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.1)))
+                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.1)),
+                      control.compute = list(openmp.strategy="huge"), num.threads = 1)
     
     model.4.2 <- inla(f.4.2, data = inla.stack.data(stk.full.4.2),
-                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.2)))
+                      control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.4.2)),
+                      control.compute = list(openmp.strategy="huge"), num.threads = 1)
     print("after model")
     #svc.3.1 <- ~ -1 + beta_0(geometry, model = spde) + beta_1(geometry, weights = PM25_TOT_NCAR)
     #svc.3.1.f <- PM_AQS ~ .

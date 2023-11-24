@@ -272,7 +272,9 @@ for (i in c(1:10)){
   
   print("after 2")
   ## 3. Get spde ---------------------------------------------------------------
-  spde <- inla.spde2.matern(mesh.train, alpha = 2, constr = F)
+  spde <- inla.spde2.pcmatern(mesh.train, alpha = 2, constr = F,
+                              prior.range = c(20, 0.05), 
+                              prior.sigma = c(22, 0.01))
   print("after 3")
   ## 4. Get spde index ---------------------------------------------------------
   mesh.index.s <- inla.spde.make.index(name = "s", n.spde = spde$n.spde)

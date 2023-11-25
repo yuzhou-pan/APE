@@ -1,3 +1,5 @@
+t.0 <- Sys.time()
+print(t.0)
 # Packages ---------------------------------------------------------------------
 
 library(INLA)
@@ -539,3 +541,8 @@ for (w in range.weeks){
 }
 
 write.csv(result.full, paste0("result.full.", n, ".csv"), row.names = F)
+
+t.1 <- Sys.time()
+print(t.1)
+
+print(t.1 - t.0)

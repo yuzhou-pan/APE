@@ -2,6 +2,11 @@
 - **APE_script1.R:** specify 7 consecutive days
 - **APE_script2.R:** divide 365 days into 7-day windows
 
+# Tasks
+- Model selection
+- Prediction on 12km*12km grids
+     - modify A matrix in "pred" stacked data
+
 # Notes
 1. Need to binary install INLA for HPC cluster
 2. Library caret used to create folds does not work in cluster R sessions
@@ -12,7 +17,4 @@
 5. Numerical issue: In script 2 inla.mesh.2d() takes forever to run in some job
    - soln: round loc argument to 5 digits
 
-# Tasks
-- Model selection
-- Prediction on 12km*12km grids
-     - modify A matrix in "pred" stacked data
+

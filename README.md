@@ -11,3 +11,8 @@
    - soln: using pcmatern for SPDE, adding initial values for hyperparameters using script 1 results
 5. Numerical issue: In script 2 inla.mesh.2d() takes forever to run in some job
    - soln: round loc argument to 5 digits
+
+# Tasks
+- Model selection
+- Prediction on 12km*12km grids
+     - modify A matrix in "pred" stacked data

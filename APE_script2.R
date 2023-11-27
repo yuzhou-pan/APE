@@ -15,6 +15,7 @@ slurm_arrayid <- Sys.getenv('SLURM_ARRAY_TASK_ID')
 # coerce the value to an integer
 n <- as.numeric(slurm_arrayid)
 
+#n=13
 #if (n == 1){
 #  inla.binary.install(os = "CentOS Linux-7")
 #}
@@ -173,7 +174,7 @@ for (w in range.weeks){
     print(paste0("df.train dimemsions: ", dim(df.train)))
     print(paste0("points.train dimensions: ", dim(points.train)))
     ### 1. Define mesh -----------------------------------------------------------
-    mesh.train <- inla.mesh.2d(loc = round(points.train, digits = 5),
+    mesh.train <- inla.mesh.2d(loc = round(points.train, digits = 2),
                                cutoff = 12,
                                max.edge = c(300, 600))
     print("after 1")

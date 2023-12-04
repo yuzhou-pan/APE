@@ -49,6 +49,9 @@ for (w in range.weeks){
   grid.pts <- data.matrix(cbind(df.7days$X_Grid_km, 
                                 df.7days$Y_Grid_km))
   
+  # define domain (boundary) for mesh construction
+  domain <- inla.nonconvex.hull(points, concave = -0.07, convex = -0.05, resolution = c(100, 100))
+  
 ## initialization --------------------------------------------------------------
   
   n.total <- nrow(points)
@@ -175,8 +178,10 @@ for (w in range.weeks){
     ### 1. Define mesh -----------------------------------------------------------
     mesh.train <- inla.mesh.2d(loc = points.train,
                                cutoff = 12,
-                               max.edge = c(300, 600),
-                               offset = c(300, 600))
+                               n = 8,
+                               max.edge = c(360, 720),
+                               offset = c(600, 1200),
+                               boundary = domain)
     print("after 1")
     ## 2. Get A and Ap -----------------------------------------------------------
     A.s <- inla.spde.make.A(mesh = mesh.train, loc = points.train)

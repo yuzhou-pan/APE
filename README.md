@@ -12,10 +12,11 @@
 2. Library caret used to create folds does not work in cluster R sessions
    - soln: manually create folds using for loops
 3. Coding error in defining buffers gets fixed
-4. **INLA crashes at some iterations (10th for script 1, many more for script 2) with errors reported as "fails to get good initial values"**
+4. INLA crashes at some iterations (10th for script 1, many more for script 2) with errors reported as "fails to get good initial values"
    - soln: using pcmatern for SPDE, adding initial values for hyperparameters using script 1 results
-6. **Numerical issue: In script 2 inla.mesh.2d() takes forever to run in some job**
+6. Numerical issue: In script 2 inla.mesh.2d() takes forever to run in some job
    - problem caused by specifying boundary layer using max.edge = c(300, 600)
-   - soln: round loc argument to ~~5~~ 2 digits
+   - ~~~soln: round loc argument to 5 digits~~~
+   - soln: tune max.edge, offset arguments in inla.mesh.2d(); define and specify boundary using all monitor locations
 
 

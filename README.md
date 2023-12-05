@@ -16,7 +16,7 @@
    - soln: using pcmatern for SPDE, adding initial values for hyperparameters using script 1 results
 6. Numerical issue: In script 2 inla.mesh.2d() takes forever to run in some job
    - problem caused by specifying boundary layer using max.edge = c(300, 600)
-   - ~~~soln: round loc argument to 5 digits~~~
+   - ~~soln: round loc argument to 5 digits~~
    - soln: tune max.edge, offset arguments in inla.mesh.2d(); define and specify boundary using all monitor locations
 
 

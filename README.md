@@ -1,8 +1,8 @@
 # Scripts
-- **APE_script1.R:** specify 7 consecutive days
-- **APE_script2.R:** divide 365 days into 13*4 7-day windows, sampling (location, day)
-- **APE_script3.R:** create summary statistics using outputs from either script2 or script4
-- **APE_script4.R:** divide 365 days into 13*4 7-day windows, sampling (location)
+- **script1:** specify 7 consecutive days
+- **script2:** divide 365 days into 13*4 7-day windows, sampling (location, day)
+- **script3:** create summary statistics using outputs from either script2 or script4
+- **script4:** divide 365 days into 13*4 7-day windows, sampling (location)
 
 # Tasks
 - Model selection

@@ -2,14 +2,23 @@ library(tidyverse)
 library(huxtable)
 library(openxlsx)
 
-for (n in c(1:2)){
-
+for (n in c(1:4)){
 if (n == 1){
   file.ext <- ".csv"
   wb <- openxlsx::createWorkbook()
-} else {
+  footnote <- "Radius 100km; sample by (location, date)"
+} else if (n == 2) {
+  file.ext <- ".nobuffer.csv"
+  wb <- openxlsx::loadWorkbook("RMSE.by.quarter.xlsx")
+  footnote <- "No buffer / radius 0km; sample by location"
+} else if (n == 3) {
   file.ext <- ".new.csv"
   wb <- openxlsx::loadWorkbook("RMSE.by.quarter.xlsx")
+  footnote <- "Radius 100km; sample by location"
+} else {
+  file.ext <- ".radius200.csv"
+  wb <- openxlsx::loadWorkbook("RMSE.by.quarter.xlsx")
+  footnote <- "Radius 200km; sample by location"
 }
 
 result.full <- NULL
@@ -64,17 +73,17 @@ RMSE %>%
                  "Model 3.1", "Model 3.2", "Model 4.1", "Model 4.2")) -> RMSE.hux
 RMSE.hux[1, 1] <- ""
 RMSE.hux <- add_rows(RMSE.hux, c("Root Mean Square Error", rep("", 5)), after = 0)
+
 RMSE.hux %>%
-  merge_across(row = 1, col = c(1:6)) %>%
-  set_align(row = 1, col = 1, "center") %>%
-  set_tb_borders(row = 1, col = 1, "solid") %>%
-  set_bottom_border(row = 10, col = c(1:6), "solid") -> RMSE.hux.formatted
+  set_align(row = 1, col = c(1: 6), "center") %>%
+  set_top_border(row = 1, col = c(1: 6)) %>%
+  set_bottom_border(row = c(1, 10), col = c(1: 6)) %>%
+  merge_across(row = 1, col = c(1: 6)) -> RMSE.hux.formatted
 
-if (n == 1){
-  wb <- as_Workbook(RMSE.hux.formatted, Workbook = wb, sheet = "Sample by (Location, Date)")
-} else {
-  wb <- as_Workbook(RMSE.hux.formatted, Workbook = wb, sheet = "Sample by Location")
-}
+RMSE.hux.formatted <- add_footnote(RMSE.hux.formatted, text = footnote)
+print(RMSE.hux.formatted)
+sheet.name <- paste0("Sheet", n)
 
+wb <- as_Workbook(RMSE.hux.formatted, Workbook = wb, sheet = sheet.name)
 saveWorkbook(wb, "RMSE.by.quarter.xlsx", overwrite = T)
 }

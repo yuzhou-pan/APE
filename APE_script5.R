@@ -1,5 +1,7 @@
 t.0 <- Sys.time()
 print(t.0)
+
+print("model 3.2 init value set; initialization with seed 123456")
 # Packages ---------------------------------------------------------------------
 
 library(INLA)
@@ -43,6 +45,7 @@ result.full <- NULL
 
 range.weeks <- c(((n-1)*4+1): (n*4))
 for (w in range.weeks){
+  print(paste0("Week: ", w))
   range.Date.group <- c(((w-1)*7+1): (w*7))
   df.7days <- read.csv(paste0("df.7days.", w, ".csv"), header = T)
   
@@ -57,6 +60,7 @@ for (w in range.weeks){
   
   ## initialization --------------------------------------------------------------
   
+  set.seed(123456)
   n.total <- nrow(points)
   base.size <- n.total %/% 10
   row.num.list <- sample(n.total)
@@ -184,7 +188,7 @@ for (w in range.weeks){
     print("before 1")
     print(paste0("df.7days dimensions: ", dim(df.7days)))
     print(paste0("df.train dimemsions: ", dim(df.train)))
-    print(paste0("points.train dimensions: ", dim(points.train)))
+    print(paste0("df.test dimensions: ", dim(df.test)))
     ### 1. Define mesh -----------------------------------------------------------
     mesh.train <- inla.mesh.2d(loc = points.train,
                                cutoff = 12,
@@ -398,8 +402,7 @@ for (w in range.weeks){
     model.3.2 <- inla(f.3.2, data = inla.stack.data(stk.full.3.2),
                       control.predictor = list(compute = TRUE, A = inla.stack.A(stk.full.3.2)),
                       control.mode = list(theta = c(0.8, 6, -6, 3, -6, 0.8)),
-                      control.compute = list(openmp.strategy="huge"), num.threads = 1,
-                      verbose = T)
+                      control.compute = list(openmp.strategy="huge"), num.threads = 1)
     print("after model.3.2")
     
     model.4.1 <- inla(f.4.1, data = inla.stack.data(stk.full.4.1),
@@ -538,7 +541,7 @@ for (w in range.weeks){
     
     cv.list[index.test] <- rep(i, n.test)
     Date.group.list[index.test] <- Date.group.test
-    print(paste0("iteration", i)) 
+    print(paste0("iteration", i, "completed")) 
   }
   # Output -----------------------------------------------------------------------
   NULL %>%

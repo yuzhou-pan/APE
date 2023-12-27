@@ -1,14 +1,14 @@
 # Scripts
 Perform 10-fold cross-validation on 7-day data
 
-|  | Objective | Sampling Method | Buffer | Data Source |
-|--|-----------|-----------------|--------|-------------|
-| **script1** | Perform 10-fold cross-validation | (Location, Day) | Radius = 100km | Specify 7 consecutive days |
-| **script2** | Perform 10-fold cross-validation | (Location, Day) | Radius = 100km | Divide 365 days into 13*4 7-day windows | 
+|  | Objective | Sampling Method | Buffer Radius | Data Source |
+|--|-----------|:---------------:|:-------------:|-------------|
+| **script1** | Perform 10-fold cross-validation | (Location, Day) | 100km | Specify 7 consecutive days |
+| **script2** | Perform 10-fold cross-validation | (Location, Day) | 100km | Divide 365 days into 13*4 7-day windows | 
 | **script3** | Create summary statistics spreadsheets | - | - | Import outputs of script 2, 4, 5, 6 |
-| **script4** | Perform 10-fold cross-validation | (Location) | Radius = 100km | Divide 365 days into 13*4 7-day windows |
-| **script5** | Perform 10-fold cross-validation | (Location) | Radius = 0km / LOO | Divide 365 days into 13*4 7-day windows |
-| **script6** | Perform 10-fold cross-validation | (Location) | Radius = 200km | Divide 365 days into 13*4 7-day windows |
+| **script4** | Perform 10-fold cross-validation | (Location) | 100km | Divide 365 days into 13*4 7-day windows |
+| **script5** | Perform 10-fold cross-validation | (Location) | 0km / LOO | Divide 365 days into 13*4 7-day windows |
+| **script6** | Perform 10-fold cross-validation | (Location) | 200km | Divide 365 days into 13*4 7-day windows |
 
 Specify 7 consecutive days, perform 10-fold cross-validation; folds are created by
 - sampling (location, day)

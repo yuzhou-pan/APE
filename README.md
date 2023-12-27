@@ -1,11 +1,11 @@
 # Scripts
 - **script1:** specify 7 consecutive days
 - Divide 365 days into 13*4 7-day windows, sampling (location, day)
-       + **script2:** radius = 100km
+       - **script2:** radius = 100km
 - Divide 365 days into 13*4 7-day windows, sampling (location)
-       + **script4:** radius = 100km
-       + **script5:** radius = 0km (no buffer)
-       + **script6:** radius = 200km
+       - **script4:** radius = 100km
+       - **script5:** radius = 0km (no buffer)
+       - **script6:** radius = 200km
 - **script3:** create summary statistics using outputs from script 2, 4, 5, 6
 
 # Tasks

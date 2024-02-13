@@ -34,6 +34,25 @@ n <- as.numeric(slurm_arrayid)
 # > sum(df$Date == "2018-12-30")
 # [1] 569
 
+# initialization of summary of model coefficients
+summary.hyperpar.1.1 <- NULL
+summary.hyperpar.1.2 <- NULL
+summary.hyperpar.2.1 <- NULL
+summary.hyperpar.2.2 <- NULL
+summary.hyperpar.3.1 <- NULL
+summary.hyperpar.3.2 <- NULL
+summary.hyperpar.4.1 <- NULL
+summary.hyperpar.4.2 <- NULL
+
+summary.fixed.1.1 <- NULL
+summary.fixed.1.2 <- NULL
+summary.fixed.2.1 <- NULL
+summary.fixed.2.2 <- NULL
+summary.fixed.3.1 <- NULL
+summary.fixed.3.2 <- NULL
+summary.fixed.4.1 <- NULL
+summary.fixed.4.2 <- NULL
+
 num.weeks <- 365 %/% 7
 num.days <- 7
 range.Date.group <- NULL
@@ -424,6 +443,73 @@ for (w in range.weeks){
     #   verbose = FALSE), 
     # data = df.train)
     
+    # get summary coefficients
+    temp <- model.1.1$summary.fixed
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.fixed.1.1 <- bind_rows(summary.fixed.1.1, temp)
+    
+    temp <- model.1.2$summary.fixed
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.fixed.1.2 <- bind_rows(summary.fixed.1.2, temp)
+    
+    temp <- model.2.1$summary.fixed
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.fixed.2.1 <- bind_rows(summary.fixed.2.1, temp)
+    
+    temp <- model.2.2$summary.fixed
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.fixed.2.2 <- bind_rows(summary.fixed.2.2, temp)
+    
+    temp <- model.3.1$summary.fixed
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.fixed.3.1 <- bind_rows(summary.fixed.3.1, temp)
+    
+    temp <- model.3.2$summary.fixed
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.fixed.3.2 <- bind_rows(summary.fixed.3.2, temp)
+    
+    temp <- model.4.1$summary.fixed
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.fixed.4.1 <- bind_rows(summary.fixed.4.1, temp)
+    
+    temp <- model.4.2$summary.fixed
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.fixed.4.2 <- bind_rows(summary.fixed.4.2, temp)
+    
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    
+    temp <- model.1.1$summary.hyperpar
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.hyperpar.1.1 <- bind_rows(summary.hyperpar.1.1, temp)
+    
+    temp <- model.1.2$summary.hyperpar
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.hyperpar.1.2 <- bind_rows(summary.hyperpar.1.2, temp)
+    
+    temp <- model.2.1$summary.hyperpar
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.hyperpar.2.1 <- bind_rows(summary.hyperpar.2.1, temp)
+    
+    temp <- model.2.2$summary.hyperpar
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.hyperpar.2.2 <- bind_rows(summary.hyperpar.2.2, temp)
+    
+    temp <- model.3.1$summary.hyperpar
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.hyperpar.3.1 <- bind_rows(summary.hyperpar.3.1, temp)
+    
+    temp <- model.3.2$summary.hyperpar
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.hyperpar.3.2 <- bind_rows(summary.hyperpar.3.2, temp)
+    
+    temp <- model.4.1$summary.hyperpar
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.hyperpar.4.1 <- bind_rows(summary.hyperpar.4.1, temp)
+    
+    temp <- model.4.2$summary.hyperpar
+    rownames(temp) <- paste0(rownames(temp), "_", w, "_", i)
+    summary.hyperpar.4.2 <- bind_rows(summary.hyperpar.4.2, temp)
+    
     
     # retrieve predicted value summary statistics
     index.test.1.1 <- inla.stack.index(stk.full.1.1, "pred")$data
@@ -557,7 +643,26 @@ for (w in range.weeks){
   result.full <- bind_rows(result.full, result.full.7days)
 }
 
-write.csv(result.full, paste0("result.full.", n, ".new.csv"), row.names = F)
+write.csv(result.full, paste0("result.full.", n, ".new.0212.csv"), row.names = F)
+
+write.csv(summary.fixed.1.1, paste0("./summary/summary.fixed.1.1_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.fixed.1.2, paste0("./summary/summary.fixed.1.2_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.fixed.2.1, paste0("./summary/summary.fixed.2.1_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.fixed.2.2, paste0("./summary/summary.fixed.2.2_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.fixed.3.1, paste0("./summary/summary.fixed.3.1_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.fixed.3.2, paste0("./summary/summary.fixed.3.2_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.fixed.4.1, paste0("./summary/summary.fixed.4.1_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.fixed.4.2, paste0("./summary/summary.fixed.4.2_", n, ".radius100.csv"), row.names = T)
+
+write.csv(summary.hyperpar.1.1, paste0("./summary/summary.hyperpar.1.1_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.hyperpar.1.2, paste0("./summary/summary.hyperpar.1.2_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.hyperpar.2.1, paste0("./summary/summary.hyperpar.2.1_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.hyperpar.2.2, paste0("./summary/summary.hyperpar.2.2_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.hyperpar.3.1, paste0("./summary/summary.hyperpar.3.1_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.hyperpar.3.2, paste0("./summary/summary.hyperpar.3.2_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.hyperpar.4.1, paste0("./summary/summary.hyperpar.4.1_", n, ".radius100.csv"), row.names = T)
+write.csv(summary.hyperpar.4.2, paste0("./summary/summary.hyperpar.4.2_", n, ".radius100.csv"), row.names = T)
+
 
 t.1 <- Sys.time()
 print(t.1)

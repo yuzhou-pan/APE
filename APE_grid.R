@@ -43,5 +43,7 @@ XY = as.data.frame(st_coordinates(geo.x))
 grid.new <- data.frame(X_Grid_km = XY$X / 1000,
                        Y_Grid_km = XY$Y / 1000)
 
+# create output
+write.csv(grid.new, "data/grid.new.csv", row.names = F)
 
 

@@ -40,10 +40,22 @@ geo.x = st_transform(geo.x, crs = "ESRI:102004")
 XY = as.data.frame(st_coordinates(geo.x))
 
 # Transfer it to km
-grid.new <- data.frame(X_Grid_km = XY$X / 1000,
-                       Y_Grid_km = XY$Y / 1000)
+distinct_grid_lat_lon$X_Grid_km = XY$X / 1000
+distinct_grid_lat_lon$Y_Grid_km = XY$Y / 1000
+
+grid %>% 
+  left_join(distinct_grid_lat_lon, by = c("Grid_lat", "Grid_lon_new")) %>%
+  mutate(Date.group = as.numeric(as.Date(date) - as.Date("2018-01-01")) + 1) -> grid.new
 
 # create output
-write.csv(grid.new, "data/grid.new.csv", row.names = F)
+num.weeks <- 365 %/% 7
+num.days <- 7
+range.Date.group <- NULL
+
+for (w in c(1:num.weeks)){
+  range.Date.group <- c(((w-1)*7+1): (w*7))
+  grid.7days <- grid.new[grid.new$Date.group %in% range.Date.group,] %>% ungroup()
+  write.csv(grid.7days, paste0("grid.7days.", w, ".csv"), row.names = F)
+}
 
 

@@ -15,8 +15,6 @@ slurm_arrayid <- Sys.getenv('SLURM_ARRAY_TASK_ID')
 # coerce the value to an integer
 n <- as.numeric(slurm_arrayid)
 
-n <- 1
-
 #if (n == 1){
 #  inla.binary.install(os = "CentOS Linux-7")
 #}

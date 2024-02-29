@@ -56,6 +56,6 @@ for (w in c(1:num.weeks)){
   range.Date.group <- c(((w-1)*7+1): (w*7))
   grid.7days <- grid.new[grid.new$Date.group %in% range.Date.group,] %>% ungroup()
   write.csv(grid.7days, paste0("grid.7days.", w, ".csv"), row.names = F)
-}
+} 
 
 

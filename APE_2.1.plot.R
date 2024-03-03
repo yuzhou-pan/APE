@@ -1,5 +1,6 @@
 library(tidyverse)
 library(gridExtra)
+library(latex2exp)
 
 grid.pred.1 <- read.csv("grid.pred_1.csv", header = T)
 grid.pred.2 <- read.csv("grid.pred_2.csv", header = T)
@@ -33,7 +34,7 @@ grid.pred <- bind_rows(grid.pred.1, grid.pred.2) %>%
 # Q3: 2018-07-01, 2018-09-30
 # Q4: 2018-10-01, 2018-12-31
 
-# plot by quarters
+
 grid.pred %>%
   mutate(quarter = case_when(
     (date >= "2018-01-01" & date <= "2018-03-31") ~ "Q1",
@@ -42,6 +43,9 @@ grid.pred %>%
     (date >= "2018-10-01" & date <= "2018-12-31") ~ "Q4"
   )) %>%
   mutate(week = (Date.group - 1) %/% 7 + 1) -> grid.pred
+
+################################################################################
+# plot by quarters
 
 grid.pred %>%
   group_by(quarter, X_Grid_km, Y_Grid_km) %>%
@@ -64,7 +68,7 @@ for (q in c("Q1", "Q2", "Q3", "Q4")){
     geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = simulation), width = 12, height = 12) +
     coord_fixed(ratio = 1) +
     scale_fill_gradient(
-      low = "blue", high = "yellow",
+      low = "white", high = "purple",
       limits = c(0, 40)
     ) +
     labs(title = "simulation", x = "Latitude", y = "Longitude") +
@@ -88,7 +92,7 @@ for (q in c("Q1", "Q2", "Q3", "Q4")){
     scale_fill_gradientn(
       #low = "green", mid = "white", high = "red",
       #limits = c(-4, 4), midpoint = 0
-      colors = c("darkgreen", "green", "white", "red"),
+      colors = c("darkblue", "blue", "white", "orange"),
       values = scales::rescale(c(-12, -4, 0, 4)),
       limits = c(-12, 4)
     ) +
@@ -100,7 +104,7 @@ for (q in c("Q1", "Q2", "Q3", "Q4")){
     geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = sd), width = 12, height = 12) +
     coord_fixed(ratio = 1) +
     scale_fill_gradient(
-      low = "white", high = "black",
+      low = "white", high = "orange",
       limits = c(0, 0.086)
     ) +
     labs(title = "standard deviation", x = "Latitude", y = "Longitude") +
@@ -114,3 +118,59 @@ for (q in c("Q1", "Q2", "Q3", "Q4")){
          filename = paste0("figures/plot.", q, ".jpg"), 
          device = "jpeg", width = 8, height = 6)
 }
+
+################################################################################
+fixed <- NULL
+hyperpar <- NULL
+for (i in c(1:13)){
+  fixed <- bind_rows(fixed, read.csv(paste0("summary.fixed.2.1_", i, ".csv"), header = T))
+  hyperpar <- bind_rows(hyperpar, read.csv(paste0("summary.hyperpar.2.1_", i, ".csv"), header = T))
+}
+
+fixed[(c(1: 52) * 2 - 1), ] %>% mutate(week = factor(row_number())) -> beta0
+fixed[(c(1: 52) * 2), ] %>% mutate(week = factor(row_number())) -> beta1
+
+hyperpar[(c(0: 51) * 3 + 2), ] %>% mutate(week = factor(row_number())) -> rho
+hyperpar[(c(0: 51) * 3 + 3), ] %>% mutate(week = factor(row_number())) -> sigma
+
+#beta0$var <- "beta0"
+#beta1$var <- "beta1"
+#beta <- bind_rows(beta0, beta1)
+
+#ggplot(beta, aes(x = week, y = X0.5quant)) +
+#  geom_errorbar(aes(ymin = X0.025quant, ymax = X0.975quant), width = 0.3) +
+#  facet_wrap(~var, nrow = 2, scales = "free") +
+#  theme_bw()
+
+ggplot(beta0, aes(x = week, y = X0.5quant)) +
+  geom_errorbar(aes(ymin = X0.025quant, ymax = X0.975quant), width = 0.3) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  labs(y = TeX("$\\beta_0$")) +
+  theme_bw() -> beta0.plot
+ggsave(plot = beta0.plot,
+       filename = "../figures/beta0.jpg", 
+       device = "jpeg", width = 16, height = 6)
+
+ggplot(beta1, aes(x = week, y = X0.5quant)) +
+  geom_errorbar(aes(ymin = X0.025quant, ymax = X0.975quant), width = 0.3) +
+  labs(y = TeX("$\\beta_1$")) +
+  theme_bw() -> beta1.plot
+ggsave(plot = beta1.plot,
+       filename = "../figures/beta1.jpg", 
+       device = "jpeg", width = 16, height = 6)
+
+ggplot(rho, aes(x = week, y = X0.5quant)) +
+  geom_errorbar(aes(ymin = X0.025quant, ymax = X0.975quant), width = 0.5) +
+  labs(y = TeX("$\\rho$")) +
+  theme_bw() -> rho.plot
+ggsave(plot = rho.plot,
+       filename = "../figures/rho.jpg", 
+       device = "jpeg", width = 16, height = 6)
+
+ggplot(sigma, aes(x = week, y = X0.5quant)) +
+  geom_errorbar(aes(ymin = X0.025quant, ymax = X0.975quant), width = 0.5) +
+  labs(y = TeX("$\\sigma$")) +
+  theme_bw() -> sigma.plot
+ggsave(plot = sigma.plot,
+       filename = "../figures/sigma.jpg", 
+       device = "jpeg", width = 16, height = 6)

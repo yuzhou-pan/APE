@@ -47,7 +47,7 @@ grid.pred %>%
   group_by(quarter, X_Grid_km, Y_Grid_km) %>%
   summarise(simulation = mean(PM25_TOT_NCAR),
             pred = mean(pred_mean),
-            diff_sim_pred = mean(PM25_TOT_NCAR - pred_mean),
+            diff_sim_pred = mean(pred_mean - simulation),
             sd = mean(pred_sd)) %>%
   ungroup() -> grid.pred.by.quarter
 
@@ -64,7 +64,7 @@ for (q in c("Q1", "Q2", "Q3", "Q4")){
     geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = simulation), width = 12, height = 12) +
     coord_fixed(ratio = 1) +
     scale_fill_gradient(
-      low = "blue", high = "orange",
+      low = "blue", high = "yellow",
       limits = c(0, 40)
     ) +
     labs(title = "simulation", x = "Latitude", y = "Longitude") +
@@ -85,11 +85,14 @@ for (q in c("Q1", "Q2", "Q3", "Q4")){
   ggplot(df.3) +
     geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = diff_sim_pred), width = 12, height = 12) +
     coord_fixed(ratio = 1) +
-    scale_fill_gradient(
-      low = "green", high = "red",
-      limits = c(-4, 12)
+    scale_fill_gradientn(
+      #low = "green", mid = "white", high = "red",
+      #limits = c(-4, 4), midpoint = 0
+      colors = c("darkgreen", "green", "white", "red"),
+      values = scales::rescale(c(-12, -4, 0, 4)),
+      limits = c(-12, 4)
     ) +
-    labs(title = "simulation - prediction", x = "Latitude", y = "Longitude") +
+    labs(title = "prediction - simulation", x = "Latitude", y = "Longitude") +
     theme_bw() + 
     theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank()) -> the.plot.3
   
@@ -97,8 +100,8 @@ for (q in c("Q1", "Q2", "Q3", "Q4")){
     geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = sd), width = 12, height = 12) +
     coord_fixed(ratio = 1) +
     scale_fill_gradient(
-      low = "purple", high = "yellow",
-      limits = c(0.016, 0.086)
+      low = "white", high = "black",
+      limits = c(0, 0.086)
     ) +
     labs(title = "standard deviation", x = "Latitude", y = "Longitude") +
     theme_bw() + 

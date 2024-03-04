@@ -68,12 +68,12 @@ for (q in c("Q1", "Q2", "Q3", "Q4")){
     geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = simulation), width = 12, height = 12) +
     coord_fixed(ratio = 1) +
     scale_fill_gradient(
-      low = "white", high = "purple",
+      low = "blue", high = "orange",
       limits = c(0, 40)
     ) +
     labs(title = "simulation", x = "Latitude", y = "Longitude") +
     theme_bw() + 
-    theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank()) -> the.plot.1
+    theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank())-> the.plot.1
   
   ggplot(df.2) +
     geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = pred), width = 12, height = 12) +
@@ -104,7 +104,7 @@ for (q in c("Q1", "Q2", "Q3", "Q4")){
     geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = sd), width = 12, height = 12) +
     coord_fixed(ratio = 1) +
     scale_fill_gradient(
-      low = "white", high = "orange",
+      low = "white", high = "black",
       limits = c(0, 0.086)
     ) +
     labs(title = "standard deviation", x = "Latitude", y = "Longitude") +
@@ -116,15 +116,79 @@ for (q in c("Q1", "Q2", "Q3", "Q4")){
   
   ggsave(plot = the.plot, 
          filename = paste0("figures/plot.", q, ".jpg"), 
-         device = "jpeg", width = 8, height = 6)
+         device = "jpeg", width = 10, height = 7.5)
 }
+
+################################################################################
+
+ggplot(grid.pred.by.quarter) +
+  geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = simulation), width = 12, height = 12) +
+  coord_fixed(ratio = 1) +
+  facet_wrap(~quarter) +
+  scale_fill_gradient(
+    low = "blue", high = "orange",
+    name = "PM2.5",
+    limits = c(0, 40)
+  ) +
+  labs(title = "NCAR Simulation", x = "Latitude", y = "Longitude") +
+  theme_bw() -> simulation.plot
+ggsave(plot = simulation.plot, 
+       filename = "figures/simulation.jpg", 
+       device = "jpeg", width = 8, height = 6)
+
+ggplot(grid.pred.by.quarter) +
+  geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = pred), width = 12, height = 12) +
+  coord_fixed(ratio = 1) +
+  facet_wrap(~quarter) +
+  scale_fill_gradient(
+    low = "blue", high = "orange",
+    name = "PM2.5",
+    limits = c(0, 40)
+  ) +
+  labs(title = "Prediction", x = "Latitude", y = "Longitude") +
+  theme_bw() -> pred.plot
+ggsave(plot = pred.plot, 
+       filename = "figures/pred.jpg", 
+       device = "jpeg", width = 8, height = 6)
+
+ggplot(grid.pred.by.quarter) +
+  geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = diff_sim_pred), width = 12, height = 12) +
+  coord_fixed(ratio = 1) +
+  facet_wrap(~quarter) +
+  scale_fill_gradientn(
+    colors = c("darkblue", "blue", "white", "orange"),
+    values = scales::rescale(c(-12, -4, 0, 4)),
+    limits = c(-12, 4),
+    name = "PM2.5"
+  ) +
+  labs(title = "Prediction - Simulation", x = "Latitude", y = "Longitude") +
+  theme_bw() -> diff.plot
+ggsave(plot = diff.plot, 
+       filename = "figures/diff.jpg", 
+       device = "jpeg", width = 8, height = 6)
+
+ggplot(grid.pred.by.quarter) +
+  geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = sd), width = 12, height = 12) +
+  coord_fixed(ratio = 1) +
+  facet_wrap(~quarter) +
+  scale_fill_gradient(
+    low = "white", high = "black",
+    name = "PM2.5"
+  ) +
+  labs(title = "Standard Deviation", x = "Latitude", y = "Longitude") +
+  theme_bw() -> sd.plot
+ggsave(plot = sd.plot, 
+       filename = "figures/sd.jpg", 
+       device = "jpeg", width = 8, height = 6)
+
+################################################################################
 
 ################################################################################
 fixed <- NULL
 hyperpar <- NULL
 for (i in c(1:13)){
-  fixed <- bind_rows(fixed, read.csv(paste0("summary.fixed.2.1_", i, ".csv"), header = T))
-  hyperpar <- bind_rows(hyperpar, read.csv(paste0("summary.hyperpar.2.1_", i, ".csv"), header = T))
+  fixed <- bind_rows(fixed, read.csv(paste0("summary.fixed.2.1_", i, ".0303.csv"), header = T))
+  hyperpar <- bind_rows(hyperpar, read.csv(paste0("summary.hyperpar.2.1_", i, ".0303.csv"), header = T))
 }
 
 fixed[(c(1: 52) * 2 - 1), ] %>% mutate(week = factor(row_number())) -> beta0

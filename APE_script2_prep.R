@@ -5,6 +5,10 @@ library(haven)
 library(knitr)
 library(tidyverse)
 library(sf)
+library(gtsummary)
+library(gt)
+library(webshot2)
+library(huxtable)
 #!/usr/bin/env Rscript
 
 # grab the array id value from the environment variable passed from sbatch
@@ -97,8 +101,8 @@ geo.x = st_transform(geo.x, crs = "ESRI:102004")
 
 #Euclidian XY in meters
 XY = as.data.frame(st_coordinates(geo.x))
-dat$X_AQS = XY$X
-dat$Y_AQS = XY$Y
+dat$X_Grid = XY$X
+dat$Y_Grid = XY$Y
 
 # Transfer it to km
 dat$X_Grid_km <- XY$X / 1000
@@ -118,6 +122,57 @@ df %>%
             by = "AQS_Site_id") %>%
   drop_na() %>%
   mutate(Date.group = as.numeric(as.Date(Date) - as.Date("2018-01-01")) + 1) -> df
+
+# descriptive table 
+
+df %>% 
+  summarise(site_num = n_distinct(AQS_Site_id)) %>%
+  bind_rows(
+    df %>% 
+      mutate(quarter = case_when(
+        (Date >= "2018-01-01" & Date <= "2018-03-31") ~ "Q1",
+        (Date >= "2018-04-01" & Date <= "2018-06-30") ~ "Q2",
+        (Date >= "2018-07-01" & Date <= "2018-09-30") ~ "Q3",
+        (Date >= "2018-10-01" & Date <= "2018-12-31") ~ "Q4")) %>%
+      group_by(quarter) %>%
+      summarise(site_num = n_distinct(AQS_Site_id))
+  ) -> df.site_num
+
+df.site_num[1, 2] <- "Overall"
+df.site_num.t <- t(df.site_num)
+colnames(df.site_num.t) <- df.site_num.t[2, ]
+df.site_num.t <- df.site_num.t[1, ]
+df.site_num.t <- c("Count", df.site_num.t)
+
+df.site_num %>%
+  uncount(site_num, .remove = FALSE) %>%
+  tbl_summary(by = quarter)
+
+tbl_summary(df.site_num, by = quarter) %>%
+  add_overall()
+
+wb <- openxlsx::createWorkbook()
+df %>% 
+  mutate(quarter = case_when(
+    (Date >= "2018-01-01" & Date <= "2018-03-31") ~ "Q1",
+    (Date >= "2018-04-01" & Date <= "2018-06-30") ~ "Q2",
+    (Date >= "2018-07-01" & Date <= "2018-09-30") ~ "Q3",
+    (Date >= "2018-10-01" & Date <= "2018-12-31") ~ "Q4")) %>%
+  select(-one_of(c("Date", "LAT_AQS", "LON_AQS", "Grid_lat", "Grid_lon", 
+                   "Date.group", "AQS_Site_id", "X_AQS_km", "Y_AQS_km", 
+                   "X_Grid_km", "Y_Grid_km"))) %>%
+  gtsummary::tbl_summary(
+    by = quarter,
+    type = all_continuous() ~ "continuous2",
+    label = list(PM_AQS ~ "Daily PM2.5",
+                 PM25_TOT_NCAR ~ "Simulated CMAQ PM2.5"),
+    statistic = list(all_continuous() ~ c("{mean} ({sd})", "{min}, {max}"))) %>%
+  add_overall() %>%
+  as_hux_table() %>%
+  add_rows(c("Monitors", rep("", 5)), after = 7) %>%
+  add_rows(df.site_num.t) %>%
+  as_Workbook(Workbook = wb) -> wb
+openxlsx::saveWorkbook(wb, "descriptive_table.xlsx", overwrite = T)
 
 ## divide 365 days into multiple windows ---------------------------------------
 

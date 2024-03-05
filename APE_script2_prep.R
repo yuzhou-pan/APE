@@ -9,6 +9,7 @@ library(gtsummary)
 library(gt)
 library(webshot2)
 library(huxtable)
+library(tmap)
 #!/usr/bin/env Rscript
 
 # grab the array id value from the environment variable passed from sbatch
@@ -123,7 +124,7 @@ df %>%
   drop_na() %>%
   mutate(Date.group = as.numeric(as.Date(Date) - as.Date("2018-01-01")) + 1) -> df
 
-# descriptive table 
+# descriptive table ------------------------------------------------------------
 
 df %>% 
   summarise(site_num = n_distinct(AQS_Site_id)) %>%
@@ -173,6 +174,25 @@ df %>%
   add_rows(df.site_num.t) %>%
   as_Workbook(Workbook = wb) -> wb
 openxlsx::saveWorkbook(wb, "descriptive_table.xlsx", overwrite = T)
+
+## example plot ----------------------------------------------------------------
+data(World)
+USA.sf <- World[World$iso_a3 == "USA", ]$geometry
+USA.contiguous.sf <- st_cast(USA.sf, "POLYGON")[6]
+df.0601 <- df[df$Date == "2018-06-01",] %>% ungroup()
+
+ggplot() +
+  geom_sf(data = USA.contiguous.sf, fill = NA) +
+  geom_point(aes(x = LON_AQS, y = LAT_AQS, color = PM_AQS), 
+             data = df.0601) +
+  scale_color_gradient(low = "blue", high = "orange", name = "PM2.5") +
+  labs(title = "Map of Available Monitoring Sites on 2018-06-01",
+       x = "Longitude", y = "Latitude") +
+  theme_minimal() -> example_sites
+ggsave(
+  plot = example_sites,
+  filename = "example_sites.jpg", 
+  device = "jpeg", width = 8, height = 6)
 
 ## divide 365 days into multiple windows ---------------------------------------
 

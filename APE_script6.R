@@ -159,7 +159,8 @@ for (w in range.weeks){
     #             data = df.train) +
     #  geom_point(aes(x = LON_AQS, y = LAT_AQS, color = "Test"), size = 1, 
     #             data = df.test)+
-    #  labs(title = element_text(paste("Fold = ", i, ", Radius = ", radius, sep = ""))) +
+      #labs(title = element_text(paste("Fold = ", i, ", Radius = ", radius, sep = ""))) +
+    #  labs(title = "An Example Map of Available Monitoring Sites with Buffer Radius at 100km") +
     #  theme(legend.position = "none") +
     #  theme_minimal() -> plot.train
     #gridExtra::grid.arrange(plot.train)

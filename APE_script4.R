@@ -19,6 +19,7 @@ n <- as.numeric(slurm_arrayid)
 #  inla.binary.install(os = "CentOS Linux-7")
 #}
 
+#library(tmap)
 #data(World)
 #USA.sf <- World[World$iso_a3 == "USA", ]$geometry
 #USA.contiguous.sf <- st_cast(USA.sf, "POLYGON")[6]
@@ -159,8 +160,9 @@ for (w in range.weeks){
     #             data = df.train) +
     #  geom_point(aes(x = LON_AQS, y = LAT_AQS, color = "Test"), size = 1, 
     #             data = df.test)+
-    #  labs(title = element_text(paste("Fold = ", i, ", Radius = ", radius, sep = ""))) +
-    #  theme(legend.position = "none") +
+    #  labs(
+    #    x = "Longitude", y = "Latitude",
+    #    title = "An Example Map of Available Monitoring Sites with Buffer Radius at 100km") +
     #  theme_minimal() -> plot.train
     #gridExtra::grid.arrange(plot.train)
     

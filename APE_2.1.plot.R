@@ -48,11 +48,13 @@ grid.pred %>%
 # plot by quarters
 
 grid.pred %>%
+  mutate(pred_length = 2 * 1.96 * sqrt(pred_sd^2 + pred_sigma_sq)) %>%
   group_by(quarter, X_Grid_km, Y_Grid_km) %>%
   summarise(simulation = mean(PM25_TOT_NCAR),
             pred = mean(pred_mean),
             diff_sim_pred = mean(pred_mean - simulation),
-            sd = mean(pred_sd)) %>%
+            sd = mean(pred_sd),
+            the_length = mean(pred_length)) %>%
   ungroup() -> grid.pred.by.quarter
 
 for (q in c("Q1", "Q2", "Q3", "Q4")){
@@ -181,14 +183,28 @@ ggsave(plot = sd.plot,
        filename = "figures/sd.jpg", 
        device = "jpeg", width = 8, height = 6)
 
+ggplot(grid.pred.by.quarter) +
+  geom_tile(aes(x = X_Grid_km, y = Y_Grid_km, fill = the_length), width = 12, height = 12) +
+  coord_fixed(ratio = 1) +
+  facet_wrap(~quarter) +
+  scale_fill_gradient(
+    low = "blue", high = "orange",
+    name = "PM2.5"
+  ) +
+  labs(title = "95% Prediction Interval Length", x = "Latitude", y = "Longitude") +
+  theme_bw() -> length.plot
+ggsave(plot = length.plot, 
+       filename = "figures/length.jpg", 
+       device = "jpeg", width = 8, height = 6)
+
 ################################################################################
 
 ################################################################################
 fixed <- NULL
 hyperpar <- NULL
 for (i in c(1:13)){
-  fixed <- bind_rows(fixed, read.csv(paste0("summary.fixed.2.1_", i, ".0303.csv"), header = T))
-  hyperpar <- bind_rows(hyperpar, read.csv(paste0("summary.hyperpar.2.1_", i, ".0303.csv"), header = T))
+  fixed <- bind_rows(fixed, read.csv(paste0("summary.fixed.2.1_", i, ".csv"), header = T))
+  hyperpar <- bind_rows(hyperpar, read.csv(paste0("summary.hyperpar.2.1_", i, ".csv"), header = T))
 }
 
 fixed[(c(1: 52) * 2 - 1), ] %>% mutate(week = factor(row_number())) -> beta0

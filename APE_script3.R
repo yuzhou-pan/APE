@@ -1,3 +1,12 @@
+#################################################################################
+# Purpose: analyze 10-fold spatial cross-validation results with summarized     #
+#          Root Mean Square Error (RMSE) and coverage of 95% prediction         #
+#          intervals by quarter. We made our decision of model selection based  #
+#          on outputs of this script                                            #
+# Notes: 1. This script was run on HPC Cluster using a single slurm job.        #
+#################################################################################
+
+
 library(tidyverse)
 library(huxtable)
 library(openxlsx)

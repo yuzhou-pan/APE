@@ -1,3 +1,15 @@
+#################################################################################
+# Purpose: perform 10-fold spatial cross-validation with buffer of 100km for    #
+#          model selection out of 8 candidate Stochastic Partial Differential   #
+#          Equation (SPDE) models, and produce outputs such as estimates of     #
+#          coefficients and prediction results.                                 #
+# Notes: 1. Similar scripts are present with only buffer radius being changed.  #
+#           Thus, this script serves as a representative for those scripts.     #
+#        2. This script was run on HPC Cluster using a slurm array from 1 to 13.#
+# Name: Yuzhou Pan                                                              #
+# Date: Mar 15, 2024                                                            #
+#################################################################################
+
 t.0 <- Sys.time()
 print(t.0)
 

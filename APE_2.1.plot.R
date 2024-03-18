@@ -1,3 +1,9 @@
+#################################################################################
+# Purpose: create plots for our final model 2.1.                                #
+# Notes: 1. This script was run on the local PC.                                #
+#################################################################################
+
+
 library(tidyverse)
 library(gridExtra)
 library(latex2exp)

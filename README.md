@@ -1,6 +1,6 @@
 # Workflow
 
-1. Compare model performance  
+1. Compare model performance using 10-fold spatial cross-validation (CV)
 
 ```mermaid
 flowchart LR;
@@ -15,6 +15,14 @@ flowchart LR;
    script6.R --> script3.R
 ```
 
+2. Obtain model 2.1 performance on the grid (all measurements are fed to the model)
+
+```mermaid
+flowchart LR;
+   script2_prep.R --> grid.R
+   grid.R --> 2.1.R
+   2.1.R --> 2.1.plot.R
+```
 
 # Scripts
 

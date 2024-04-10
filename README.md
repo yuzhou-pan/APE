@@ -1,11 +1,30 @@
 # Workflow
 
+1. Compare model performance  
+
+```mermaid
+flowchart LR;
+   script2_prep.R --> mesh.R
+   mesh.R --> script2.R
+   mesh.R --> script4.R
+   mesh.R --> script5.R
+   mesh.R --> script6.R
+   script2.R --> script3.R
+   script4.R --> script3.R
+   script5.R --> script3.R
+   script6.R --> script3.R
+```
+
+
 # Scripts
 
 ## Data Preperation
 
 |  | Objective | Input | Output |
 |--|-----------|-------| ------ |
+| **script2_prep.R** | Clean and slice measurement data into 7-day windows | PM_AQS_2018.sas7bdat; grid_model_pm_o3_2018.sas7bdat; Relationship_File_AQS_Model_PM.sas7bdat | Measurement data (7-day windows); a descriptive table and an example plot presented in the slides |
+| **grid.R** | Project grid locations from degrees to km in units and slice them into 7-day windows | grid_model_pm_o3_2018.sas7bdat; Relationship_File_AQS_Model_PM.sas7bdat | Grid data (7-day windows) |
+| **mesh.R** | Experiment whether the mesh setting works in every week/fold | Measurement data (7-day windows) | - |
 
 ## Analysis
 

@@ -4,33 +4,31 @@
 
 ## Data Preperation
 
+|  | Objective | Input | Output |
+|--|-----------|-------| ------ |
+
 ## Analysis
 
 Output: 
-1. Predictions (mean, sd, 95% lower/upper level)
+1. Predictions (mean, sd, 95% lower/upper level) on monitor locations
 2. Summaries of fixed paramters
 3. Summaries of hyperparameters
 
-|  | Objective | Sampling Method | Buffer Radius | Data Source |
+|  | Objective | Sampling Method | Buffer Radius | Input |
 |--|-----------|:---------------:|:-------------:|-------------|
-| **script1** | Perform 10-fold CV | (Location, Day) | 100km | Specify 7 consecutive days |
-| **script2** | Perform 10-fold CV | (Location, Day) | 100km | Divide 365 days into 13*4 7-day windows | 
-| **script4** | Perform 10-fold CV | (Location) | 100km | Divide 365 days into 13*4 7-day windows |
-| **script5** | Perform 10-fold CV | (Location) | 0km | Divide 365 days into 13*4 7-day windows |
-| **script6** | Perform 10-fold CV | (Location) | 200km | Divide 365 days into 13*4 7-day windows |
+| **script1.R** | Perform 10-fold CV | (Location, Day) | 100km | Measurement data (by specifying 7 consecutive days) |
+| **script2.R** | Perform 10-fold CV | (Location, Day) | 100km | Measurement data (7-day windows) | 
+| **script4.R** | Perform 10-fold CV | (Location) | 100km | Measurement data (7-day windows) |
+| **script5.R** | Perform 10-fold CV | (Location) | 0km | Measurement data (7-day windows) |
+| **script6.R** | Perform 10-fold CV | (Location) | 200km | Measurement data (7-day windows) |
 
 ## Generating Tables or Plots
 
-Output:
-1. RMSE by quarters
-2. Coverage by quarters
-3. Plots
-
-|  | Objective | Data Source |
-|--|-----------|-------------|
-| **script3** | Create summary tables | Import outputs of script 2, 4, 5, 6 |
-| **2.1** | Run our final model 2.1 predicting to all grid locations | |
-| **2.1.plot** |  Create plots for our final model 2.1 | |
+|  | Objective | Input | Output |
+|--|-----------|-------| ------ |
+| **script3.R** | Create summary tables | Predictions of 10-fold CV from script2.R to script6.R | RMSE and coverage by quarters for all models |
+| **2.1.R** | Run our final model 2.1 predicting to all grid locations | Measurement + grid data (7-day windows) | Predictions (mean, sd, 95% lower/upper level) on grid locations; summaries of fixed paramters & hyperparameters of model 2.1 |
+| **2.1.plot.R** |  Create plots for our final model 2.1 | Predictions on grid locations; summaries of model 2.1 | Plots presented in the slides |
 
 
 # Notes

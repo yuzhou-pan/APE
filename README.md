@@ -26,7 +26,7 @@ flowchart LR;
 
 # Scripts
 
-## Data Preperation
+## Data Preparation
 
 |  | Objective | Input | Output |
 |--|-----------|-------| ------ |
@@ -38,7 +38,7 @@ flowchart LR;
 
 Output: 
 1. Predictions (mean, sd, 95% lower/upper level) on monitor locations
-2. Summaries of fixed paramters
+2. Summaries of fixed parameters
 3. Summaries of hyperparameters
 
 |  | Objective | Sampling Method | Buffer Radius | Input |
